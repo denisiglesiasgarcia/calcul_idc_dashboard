@@ -178,62 +178,14 @@ def fonction_note_calcul(data_site, df_meteo_tre200d0):
         data_site["periode_start"], data_site["periode_end"]
     )
 
-    # df_list
-    # calculs préalables
+    # météo
     data_site["dj_periode"] = calcul_dj_periode(
         df_meteo_tre200d0,
         data_site["periode_start"],
         data_site["periode_end"],
     )
-    data_site["repartition_energie_finale_partie_renovee_somme"] = (
-        fonction_repartition_energie_finale_partie_renovee_somme(
-            data_site["repartition_energie_finale_partie_renovee_chauffage"],
-            data_site["repartition_energie_finale_partie_renovee_ecs"],
-        )
-    )
-    data_site["estimation_ecs_annuel"] = fonction_estimation_ecs_annuel(
-        data_site["periode_nb_jours"]
-    )
-    data_site["estimation_part_chauffage_periode_sur_annuel"] = (
-        fonction_estimation_part_chauffage_periode_sur_annuel(
-            data_site["dj_periode"], DJ_REF_ANNUELS
-        )
-    )
-    data_site["estimation_energie_finale_periode_sur_annuel"] = (
-        fonction_estimation_energie_finale_periode_sur_annuel(
-            data_site["estimation_ecs_annuel"],
-            data_site["repartition_energie_finale_partie_renovee_ecs"],
-            data_site["repartition_energie_finale_partie_surelevee_ecs"],
-            data_site["estimation_part_chauffage_periode_sur_annuel"],
-            data_site["repartition_energie_finale_partie_renovee_chauffage"],
-            data_site["repartition_energie_finale_partie_surelevee_chauffage"],
-        )
-    )
-    data_site["part_ecs_periode_comptage"] = fonction_part_ecs_periode_comptage(
-        data_site["estimation_energie_finale_periode_sur_annuel"],
-        data_site["estimation_ecs_annuel"],
-        data_site["repartition_energie_finale_partie_renovee_ecs"],
-        data_site["repartition_energie_finale_partie_surelevee_ecs"],
-    )
-    data_site["part_chauffage_periode_comptage"] = (
-        fonction_part_chauffage_periode_comptage(
-            data_site["estimation_energie_finale_periode_sur_annuel"],
-            data_site["estimation_part_chauffage_periode_sur_annuel"],
-            data_site["repartition_energie_finale_partie_renovee_chauffage"],
-            data_site["repartition_energie_finale_partie_surelevee_chauffage"],
-        )
-    )
-    data_site["correction_ecs"] = fonction_correction_ecs(data_site["periode_nb_jours"])
-    data_site["agent_energetique_ef_mazout_somme_mj"] = (
-        fonction_agent_energetique_ef_mazout_somme_mj(
-            data_site["agent_energetique_ef_mazout_kg"],
-            data_site["agent_energetique_ef_mazout_litres"],
-            data_site["agent_energetique_ef_mazout_kwh"],
-            CONVERSION_MAZOUT_MJ_KG,
-            CONVERSION_MAZOUT_MJ_LITRES,
-            CONVERSION_MAZOUT_MJ_KWH,
-        )
-    )
+
+    # agents énergétiques
     data_site["agent_energetique_ef_gaz_naturel_somme_mj"] = (
         fonction_agent_energetique_ef_gaz_naturel_somme_mj(
             data_site["agent_energetique_ef_gaz_naturel_m3"],
@@ -312,107 +264,21 @@ def fonction_note_calcul(data_site, df_meteo_tre200d0):
             data_site["agent_energetique_ef_autre_somme_mj"],
         )
     )
-    data_site["methodo_b_ww_kwh"] = fonction_methodo_b_ww_kwh(
-        data_site["agent_energetique_ef_somme_kwh"],
-        data_site["part_ecs_periode_comptage"],
-    )
-    data_site["methodo_e_ww_kwh_m2"] = fonction_methodo_e_ww_kwh_m2(
-        data_site["methodo_b_ww_kwh"],
-        data_site["sre_renovation_m2"],
-        data_site["periode_nb_jours"],
-    )
-    data_site["methodo_b_h_kwh"] = fonction_methodo_b_h_kwh(
-        data_site["agent_energetique_ef_somme_kwh"],
-        data_site["part_chauffage_periode_comptage"],
-    )
-    data_site["methodo_e_h_kwh_m2"] = fonction_methodo_e_h_kwh_m2(
-        data_site["sre_renovation_m2"],
-        data_site["dj_periode"],
-        data_site["methodo_b_h_kwh"],
-        DJ_REF_ANNUELS,
-    )
-    data_site[
-        "energie_finale_apres_travaux_climatiquement_corrigee_inclus_surelevation_kwh_m2"
-    ] = fonction_energie_finale_apres_travaux_climatiquement_corrigee_inclus_surelevation_kwh_m2(
-        data_site["methodo_e_ww_kwh_m2"], data_site["methodo_e_h_kwh_m2"]
-    )
-    data_site["energie_finale_apres_travaux_climatiquement_corrigee_renovee_kwh_m2"] = (
-        fonction_energie_finale_apres_travaux_climatiquement_corrigee_renovee_kwh_m2(
-            data_site[
-                "energie_finale_apres_travaux_climatiquement_corrigee_inclus_surelevation_kwh_m2"
-            ],
-            data_site["repartition_energie_finale_partie_renovee_somme"],
-        )
-    )
-    data_site["facteur_ponderation_moyen"] = fonction_facteur_ponderation_moyen(
-        data_site["agent_energetique_ef_mazout_somme_mj"],
-        data_site["agent_energetique_ef_gaz_naturel_somme_mj"],
-        data_site["agent_energetique_ef_bois_buches_dur_somme_mj"],
-        data_site["agent_energetique_ef_bois_buches_tendre_somme_mj"],
-        data_site["agent_energetique_ef_pellets_somme_mj"],
-        data_site["agent_energetique_ef_plaquettes_somme_mj"],
-        data_site["agent_energetique_ef_cad_somme_mj"],
-        data_site["agent_energetique_ef_electricite_pac_somme_mj"],
-        data_site["agent_energetique_ef_electricite_directe_somme_mj"],
-        data_site["agent_energetique_ef_autre_somme_mj"],
-        data_site["agent_energetique_ef_somme_kwh"],
-        FACTEUR_PONDERATION_GAZ_NATUREL,
-        FACTEUR_PONDERATION_MAZOUT,
-        FACTEUR_PONDERATION_BOIS_BUCHES_DUR,
-        FACTEUR_PONDERATION_BOIS_BUCHES_TENDRE,
-        FACTEUR_PONDERATION_PELLETS,
-        FACTEUR_PONDERATION_PLAQUETTES,
-        FACTEUR_PONDERATION_CAD,
-        FACTEUR_PONDERATION_ELECTRICITE_PAC,
-        FACTEUR_PONDERATION_ELECTRICITE_DIRECTE,
-        FACTEUR_PONDERATION_AUTRE,
-    )
-    data_site["methodo_e_ww_renovee_pondere_kwh_m2"] = (
-        fonction_methodo_e_ww_renovee_pondere_kwh_m2(
-            data_site["methodo_e_ww_kwh_m2"],
-            data_site["facteur_ponderation_moyen"],
-            data_site["repartition_energie_finale_partie_renovee_somme"],
-        )
-    )
-    data_site["methodo_e_h_renovee_pondere_kwh_m2"] = (
-        fonction_methodo_e_h_renovee_pondere_kwh_m2(
-            data_site["methodo_e_h_kwh_m2"],
-            data_site["facteur_ponderation_moyen"],
-            data_site["repartition_energie_finale_partie_renovee_somme"],
-        )
-    )
-    data_site[
-        "energie_finale_apres_travaux_climatiquement_corrigee_renovee_pondere_kwh_m2"
-    ] = fonction_energie_finale_apres_travaux_climatiquement_corrigee_renovee_pondere_kwh_m2(
-        data_site[
-            "energie_finale_apres_travaux_climatiquement_corrigee_renovee_kwh_m2"
-        ],
-        data_site["facteur_ponderation_moyen"],
-    )
-    data_site[
-        "energie_finale_apres_travaux_climatiquement_corrigee_renovee_pondere_MJ_m2"
-    ] = fonction_energie_finale_apres_travaux_climatiquement_corrigee_renovee_pondere_MJ_m2(
-        data_site[
-            "energie_finale_apres_travaux_climatiquement_corrigee_renovee_pondere_kwh_m2"
-        ],
-    )
-    data_site["delta_ef_realisee_kwh_m2"] = fonction_delta_ef_realisee_kwh_m2(
-        data_site["ef_avant_corr_kwh_m2"],
-        data_site[
-            "energie_finale_apres_travaux_climatiquement_corrigee_renovee_pondere_kwh_m2"
-        ],
-    )
-    data_site["delta_ef_visee_kwh_m2"] = fonction_delta_ef_visee_kwh_m2(
-        data_site["ef_avant_corr_kwh_m2"],
-        data_site["ef_objectif_pondere_kwh_m2"],
-    )
-    data_site["atteinte_objectif"] = fonction_atteinte_objectif(
-        data_site["delta_ef_realisee_kwh_m2"],
-        data_site[
-            "energie_finale_apres_travaux_climatiquement_corrigee_renovee_pondere_kwh_m2"
-        ],
-        data_site["delta_ef_visee_kwh_m2"],
-    )
+
+    # TODO: IDC_Bww → Energie finale pour l'ECS
+
+    # TODO: IDC_Eww → Part d'énergie finale pour ECS
+
+    # TODO: IDC_Bh → Part chauffage de l'énergie finale
+
+    # TODO: DJ ref annuels
+
+    # TODO: DJ période comptage
+
+    # TODO: IDC_Eh → Part d'énergie finale pour le chauffage avec correction climatique
+
+    # TODO: IDC = IDC_Eh + IDC_Eww
+
     # générer dataframe df_list
     df_list = make_dataframe_df_list(data_site, DJ_REF_ANNUELS)
 

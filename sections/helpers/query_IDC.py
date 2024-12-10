@@ -14,6 +14,7 @@ from datetime import datetime
 import json
 from sections.helpers.save_excel_streamlit import display_dataframe_with_excel_download
 
+
 logging.basicConfig(level=logging.DEBUG)
 
 
@@ -413,3 +414,122 @@ def create_barplot(data_df, nom_projet):
             ],
         },
     )
+
+
+def get_addresses_and_egids(url: str, db_path: str = "addresses_egid.db") -> None:
+    """
+    Retrieve all unique address-EGID pairs from the API and save to SQLite database.
+
+    Args:
+        url (str): The API endpoint URL.
+        db_path (str): Path to the SQLite database file.
+    """
+    # Setup logging
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+
+    # Create database connection
+    conn = sqlite3.connect(db_path)
+    logger.info(f"Connected to database: {db_path}")
+
+    # Create table if it doesn't exist
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS addresses (
+            egid INTEGER,
+            address TEXT,
+            updated_at TIMESTAMP,
+            PRIMARY KEY (egid, address)
+        )
+    """
+    )
+    logger.info("Database table checked/created")
+
+    offset = 0
+    chunk_size = 1000
+    total_saved = 0
+
+    # Make an initial request to get the total count
+    params = {
+        "where": "1=1",
+        "outFields": "adresse,egid",
+        "returnGeometry": "false",
+        "f": "json",
+        "resultRecordCount": 1,
+    }
+
+    try:
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        total_count = data.get("properties", {}).get("total", 0)
+        logger.info(f"Total records to process: {total_count}")
+
+        while True:
+            params = {
+                "where": "1=1",
+                "outFields": "adresse,egid",
+                "returnGeometry": "false",
+                "f": "json",
+                "resultOffset": offset,
+                "resultRecordCount": chunk_size,
+            }
+
+            try:
+                response = requests.get(url, params=params)
+                response.raise_for_status()
+                data = response.json()
+
+                if "features" not in data or not data["features"]:
+                    logger.info("No more data to fetch")
+                    break
+
+                # Prepare data for database
+                now = datetime.now().isoformat()
+                records = [
+                    (
+                        feature["attributes"]["egid"],
+                        feature["attributes"]["adresse"],
+                        now,
+                    )
+                    for feature in data["features"]
+                    if feature["attributes"]["adresse"]
+                    and feature["attributes"]["egid"]
+                ]
+
+                # Insert data into database
+                conn.executemany(
+                    """
+                    INSERT OR REPLACE INTO addresses (egid, address, updated_at)
+                    VALUES (?, ?, ?)
+                    """,
+                    records,
+                )
+                conn.commit()
+
+                total_saved += len(records)
+                logger.info(
+                    f"Processed {offset + len(records)} records out of {total_count}"
+                )
+
+                records_fetched = len(data["features"])
+                if records_fetched < chunk_size:
+                    logger.info(
+                        f"Finished processing. Total records saved: {total_saved}"
+                    )
+                    break
+
+                offset += chunk_size
+
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Error fetching data at offset {offset}: {e}")
+                break
+            except json.JSONDecodeError:
+                logger.error(f"JSON decode error at offset {offset}")
+                break
+
+    except Exception as e:
+        logger.error(f"Error during execution: {e}")
+    finally:
+        conn.close()
+        logger.info("Database connection closed")
