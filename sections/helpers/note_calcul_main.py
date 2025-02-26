@@ -27,13 +27,6 @@ from sections.helpers.calcul_dj import (
 )
 
 from sections.helpers.note_calcul.calculs import (
-    fonction_repartition_energie_finale_partie_renovee_somme,
-    fonction_estimation_ecs_annuel,
-    fonction_estimation_part_chauffage_periode_sur_annuel,
-    fonction_estimation_energie_finale_periode_sur_annuel,
-    fonction_part_ecs_periode_comptage,
-    fonction_part_chauffage_periode_comptage,
-    fonction_correction_ecs,
     fonction_agent_energetique_ef_mazout_somme_mj,
     fonction_agent_energetique_ef_gaz_naturel_somme_mj,
     fonction_agent_energetique_ef_bois_buches_dur_somme_mj,
@@ -45,20 +38,6 @@ from sections.helpers.note_calcul.calculs import (
     fonction_agent_energetique_ef_electricite_directe_somme_mj,
     fonction_agent_energetique_ef_autre_somme_mj,
     fonction_agent_energetique_ef_somme_kwh,
-    fonction_methodo_b_ww_kwh,
-    fonction_methodo_e_ww_kwh_m2,
-    fonction_methodo_b_h_kwh,
-    fonction_methodo_e_h_kwh_m2,
-    fonction_energie_finale_apres_travaux_climatiquement_corrigee_inclus_surelevation_kwh_m2,
-    fonction_energie_finale_apres_travaux_climatiquement_corrigee_renovee_kwh_m2,
-    fonction_facteur_ponderation_moyen,
-    fonction_methodo_e_ww_renovee_pondere_kwh_m2,
-    fonction_methodo_e_h_renovee_pondere_kwh_m2,
-    fonction_energie_finale_apres_travaux_climatiquement_corrigee_renovee_pondere_kwh_m2,
-    fonction_energie_finale_apres_travaux_climatiquement_corrigee_renovee_pondere_MJ_m2,
-    fonction_delta_ef_realisee_kwh_m2,
-    fonction_delta_ef_visee_kwh_m2,
-    fonction_atteinte_objectif,
 )
 
 from sections.helpers.note_calcul.constantes import (

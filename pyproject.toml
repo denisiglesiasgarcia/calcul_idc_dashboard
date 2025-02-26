@@ -1,0 +1,13 @@
+[project]
+name = "calcul-idc-dashboard"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "geopandas>=1.0.1",
+    "matplotlib>=3.10.0",
+    "polars>=1.23.0",
+    "pyproj>=3.7.1",
+    "streamlit>=1.42.2",
+]
