@@ -684,7 +684,7 @@ def display_database_management(mycol_historique_sites, data_admin):
                         else "Date non définie"
                     )
                     return f"{row['nom_projet']} ({date_str})"
-                except (AttributeError, ValueError) as e:
+                except (AttributeError, ValueError):
                     return f"{row['nom_projet']} (Date invalide)"
 
             df["project_identifier"] = df.apply(create_project_identifier, axis=1)

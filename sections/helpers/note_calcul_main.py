@@ -27,7 +27,6 @@ from sections.helpers.calcul_dj import (
 )
 
 from sections.helpers.note_calcul.calculs import (
-    fonction_agent_energetique_ef_mazout_somme_mj,
     fonction_agent_energetique_ef_gaz_naturel_somme_mj,
     fonction_agent_energetique_ef_bois_buches_dur_somme_mj,
     fonction_agent_energetique_ef_bois_buches_tendre_somme_mj,
@@ -41,9 +40,6 @@ from sections.helpers.note_calcul.calculs import (
 )
 
 from sections.helpers.note_calcul.constantes import (
-    CONVERSION_MAZOUT_MJ_KG,
-    CONVERSION_MAZOUT_MJ_LITRES,
-    CONVERSION_MAZOUT_MJ_KWH,
     CONVERSION_GAZ_NATUREL_MJ_M3,
     CONVERSION_GAZ_NATUREL_MJ_KWH,
     CONVERSION_BOIS_BUCHES_DUR_MJ_STERE,

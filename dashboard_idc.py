@@ -13,26 +13,9 @@ from sections.helpers.calcul_dj import (
     get_meteo_data,
 )
 
-from sections.helpers.rapport import (
-    generate_pdf,
-)
 
-from sections.helpers.query_IDC import (
-    make_request,
-    convert_geometry_for_streamlit,
-    show_map,
-    show_dataframe,
-    get_adresses_egid,
-    create_barplot,
-)
 
-from sections.helpers.save_excel_streamlit import (
-    display_dataframe_with_excel_download,
-)
 
-from sections.helpers.agents_energetiques import (
-    display_agents_energetiques_idc,
-)
 
 from sections.helpers.dates import (
     display_dates_periode,

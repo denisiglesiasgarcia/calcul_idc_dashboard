@@ -1,8 +1,6 @@
 import pandas as pd
 import altair as alt
 import streamlit as st
-import numpy as np
-from typing import Tuple
 
 
 def safe_numeric_conversion(series):

@@ -4,13 +4,46 @@ import os
 import datetime
 import pandas as pd
 import streamlit as st
-import matplotlib
 import sqlite3
 
+from sections.helpers.query_IDC import (
+    make_request,
+    convert_geometry_for_streamlit,
+    show_map,
+    show_dataframe,
+    create_barplot,
+)
+
+from sections.helpers.calcul_dj import (
+    get_meteo_data,
+)
+
+# ---------------------------------------------------------------------------------------
+# IDC query
+FIELDS = "*"
+URL_INDICE_MOYENNES_3_ANS = "https://vector.sitg.ge.ch/arcgis/rest/services/Hosted/SCANE_INDICE_MOYENNES_3_ANS/FeatureServer/0/query"
+
+# Mise à jour météo
+last_update_time_meteo = datetime.datetime(2021, 1, 1)
+now = datetime.datetime.now()
+if (now - last_update_time_meteo).days > 1:
+    last_update_time_meteo = now
+    st.session_state["df_meteo_tre200d0"] = get_meteo_data()
+
+# ---------------------------------------------------------------------------------------
+# Define the default tabs
+# tabs = [
+#     "0 Readme",
+#     "1 Données site",
+#     "2 Note de calcul",
+#     "3 Résultats",
+#     "4 Historique",
+#     "5 Générer Rapport",
+# ]
+# tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(tabs)
+
+# ---------------------------------------------------------------------------------------
 st.subheader("Sélection adresse")
-
-
-
 
 # Modify your get_all_addresses function to use absolute path
 @st.cache_data
@@ -78,19 +111,135 @@ if selected_options:
         "adresse": selected_addresses,
         "egid": selected_egids
     }
-    selected_df = pd.DataFrame(selected_data)
+    st.session_state["data_site"] = pd.DataFrame(selected_data)
     
     # Display the selected data
-    st.dataframe(selected_df)
+    # st.dataframe(selected_df)
 
 else:
     st.warning("Sélectionner au moins une adresse pour continuer.")
 
+
+# ---------------------------------------------------------------------------------------
 st.subheader("Plan de situation")
 
-# TODO: Add a map to show the location of the site
+if selected_options and len(st.session_state["data_site"]) > 0:
+    # get egids
+    egids = st.session_state["data_site"]["egid"].tolist()
 
-st.subheader("Agents énérgétiques")
+    # get data
+    data_geometry = make_request(
+        0,
+        FIELDS,
+        URL_INDICE_MOYENNES_3_ANS,
+        1000,
+        "SCANE_INDICE_MOYENNES_3_ANS",
+        True,
+        egids,
+    )
+    data_df = make_request(
+        0,
+        FIELDS,
+        URL_INDICE_MOYENNES_3_ANS,
+        1000,
+        "SCANE_INDICE_MOYENNES_3_ANS",
+        False,
+        egids,
+    )
+
+    if data_geometry and data_df:
+        # show map
+        if st.checkbox("Afficher la carte"):
+            geojson_data, centroid = convert_geometry_for_streamlit(
+                data_geometry
+            )
+            show_map(geojson_data, centroid)
+
+        st.subheader("Historique IDC")
+        # create barplot
+        adresses_titre = st.session_state["data_site"]["adresse"].tolist()
+        title = ', '.join(adresses_titre)
+        create_barplot(data_df, title)
+
+        # show dataframe in something hidden like a
+        if st.checkbox("Afficher les données IDC"):
+            show_dataframe(data_df)
+    else:
+        st.error(
+            "Pas de données disponibles pour le(s) EGID associé(s) à ce site."
+        )
+else:
+    st.write("Pas d'adresse sélectionnée.")
+
+# ---------------------------------------------------------------------------------------
+st.subheader("Eléments à renseigner pour le calcul de l'IDC", divider="rainbow")
+
+st.markdown(
+    '<span style="font-size:1.2em;">**Sélectionner les dates de début et fin de période**</span>',
+    unsafe_allow_html=True,
+)
+tab2_col3, tab2_col4 = st.columns(2)
+# dates
+with tab2_col3:
+    last_year = pd.to_datetime(
+        st.session_state["df_meteo_tre200d0"]["time"].max()
+    ) - pd.DateOffset(days=365)
+    periode_start = st.date_input(
+        "Début de la période",
+        datetime.date(last_year.year, last_year.month, last_year.day),
+    )
+
+with tab2_col4:
+    max_date_texte = (
+        st.session_state["df_meteo_tre200d0"]["time"]
+        .max()
+        .strftime("%Y-%m-%d")
+    )
+    fin_periode_txt = (
+        f"Fin de la période (météo disponible jusqu'au: {max_date_texte})"
+    )
+    max_date = pd.to_datetime(
+        st.session_state["df_meteo_tre200d0"]["time"].max()
+    )
+    periode_end = st.date_input(
+        fin_periode_txt,
+        datetime.date(max_date.year, max_date.month, max_date.day),
+    )
+
+periode_nb_jours = (periode_end - periode_start).days + 1
+st.session_state["data_site"]["periode_nb_jours"] = float(periode_nb_jours)
+
+st.session_state["data_site"]["periode_start"] = pd.to_datetime(
+    periode_start
+)
+st.session_state["data_site"]["periode_end"] = pd.to_datetime(periode_end)
+
+try:
+    if st.session_state["data_site"]["periode_nb_jours"] <= 180:
+        st.warning(
+            "La période de mesure doit être supérieure à 3 mois (minimum recommandé 6 mois)"
+        )
+except ValueError:
+    st.warning("Problème de date de début et de fin de période")
+st.write(
+    f"Période du {st.session_state['data_site']['periode_start'].strftime('%Y-%m-%d')} au {st.session_state['data_site']['periode_end'].strftime('%Y-%m-%d')} soit {int(st.session_state['data_site']['periode_nb_jours'])} jours"
+)
+
+tab2_col1, tab2_col2 = st.columns(2)
+with tab2_col1:
+    # Affectations SRE
+    st.session_state["data_site"]["somme_pourcentage_affectations"] = (
+        display_affectations(data_sites_db, sre_renovation_m2)
+    )
+
+with tab2_col2:
+    # Agents énergétiques
+    st.session_state["data_site"]["somme_agents_energetiques_mj"] = (
+        display_energy_agents(
+            st.session_state["data_site"],
+            data_sites_db,
+        )
+    )
 
 # display_agents_energetiques_idc(st.session_state["data"])
 
