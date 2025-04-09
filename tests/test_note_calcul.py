@@ -1,5 +1,4 @@
 # test_note_calcul.py
-# Tests for the functions in the note_calcul.py file
 
 # import pytest
 from pytest import approx
@@ -587,3 +586,9 @@ def test_fonction_atteinte_objectif():
         ],
         data_site_avusy1["delta_ef_visee_kwh_m2"],
     ) == approx(data_site_avusy1["atteinte_objectif"])
+
+
+####################################################################################################
+
+# Tests for sections/helpers/note_calcul/calculs_idc.py
+
