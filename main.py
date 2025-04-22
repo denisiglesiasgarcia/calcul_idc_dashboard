@@ -35,11 +35,21 @@ from sections.helpers.note_calcul_idc_main import (
 )
 
 from sections.helpers.resultats_idc import (
-    display_resultats_idc
+    show_results_idc
 )
 
 # streamlit wide mode
-st.set_page_config(layout="wide")
+st.set_page_config(
+    layout="wide",
+    page_title="Outil de calcul de l'IDC",
+    page_icon="📈",
+    initial_sidebar_state="expanded",
+    menu_items={
+        "Get Help": "https://www.streamlit.io/community",
+        "Report a bug": "https://github.com/yourusername/yourrepo/issues",
+        "About": "# My Dashboard\nCreated with Streamlit."
+    }
+)
 
 # ---------------------------------------------------------------------------------------
 # IDC query
@@ -314,7 +324,7 @@ with tab2:
 
     # Subheader for the calculation period section
     st.subheader("Résultats du calcul de l'IDC", divider="rainbow")
-    display_resultats_idc(
+    show_results_idc(
         st.session_state["data_site"],)
     
     
