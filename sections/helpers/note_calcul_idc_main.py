@@ -7,11 +7,10 @@ from sections.helpers.note_calcul.create_dataframe_periode_list import (
     make_dataframe_df_periode_list,
 )
 
-from sections.helpers.note_calcul.create_dataframe_list import make_dataframe_df_list
-
-from sections.helpers.note_calcul.create_dataframe_agent_energetique import (
-    make_dataframe_df_agent_energetique,
-)
+from sections.helpers.note_calcul.create_dataframe_idc import (
+    make_dataframe_df_list_idc,
+    make_dataframe_df_agent_energetique_idc,
+    )
 
 from sections.helpers.note_calcul.create_dataframe_meteo import (
     make_dataframe_df_meteo_note_calcul,
@@ -27,10 +26,9 @@ from sections.helpers.calcul_dj import (
 )
 
 from sections.helpers.note_calcul.calculs_idc import (
-    fonction_idc_eww_theorique_comptage_ecs_inclus_mj_m2,
+    fonction_idc_eww_theorique_moyen_comptage_ecs_inclus_mj_m2,
     fonction_idc_bww_energie_finale_ecs_comptage_ecs_inclus_mj,
     fonction_idc_bww_energie_finale_ecs_comptage_ecs_non_inclus_mj,
-    fonction_idc_eww_part_energie_finale_ecs_comptage_ecs_inclus_mj_m2,
     fonction_idc_eww_part_energie_finale_ecs_comptage_ecs_non_inclus_mj_m2,
     fonction_idc_bh_energie_finale_chauffage_comptage_ecs_inclus_mj,
     fonction_idc_bh_energie_finale_chauffage_comptage_ecs_non_inclus_mj,
@@ -38,6 +36,7 @@ from sections.helpers.note_calcul.calculs_idc import (
     fonction_idc_eh_part_energie_finale_chauffage_climatiquement_corrige_comptage_ecs_non_inclus_mj_m2,
     fonction_idc_resultat_comptage_ecs_inclus_mj_m2,
     fonction_idc_resultat_comptage_ecs_non_inclus_mj_m2,
+    fonction_conversion_energie_idc,
 )
 
 from sections.helpers.note_calcul.constantes import (
@@ -86,9 +85,7 @@ from sections.helpers.note_calcul.constantes import (
     IDC_EWW_PISCINES_COUVERTES_MJ_M2
 )
 
-from sections.helpers.note_calcul.latex import (
-    make_latex_formula_facteur_ponderation_moyen,
-)
+
 
 
 def fonction_note_calcul_idc(data_site, df_meteo_tre200d0):
@@ -128,7 +125,7 @@ def fonction_note_calcul_idc(data_site, df_meteo_tre200d0):
         if data_site["comptage_ecs_inclus"]:
             # ECS
             # C119
-            data_site["idc_eww_theorique_comptage_ecs_inclus_mj_m2"] = fonction_idc_eww_theorique_comptage_ecs_inclus_mj_m2(
+            data_site["idc_eww_theorique_moyen_comptage_ecs_inclus_mj_m2"] = fonction_idc_eww_theorique_moyen_comptage_ecs_inclus_mj_m2(
                 data_site["sre_pourcentage_habitat_collectif"],
                 data_site["sre_pourcentage_habitat_individuel"],
                 data_site["sre_pourcentage_administration"],
@@ -156,19 +153,11 @@ def fonction_note_calcul_idc(data_site, df_meteo_tre200d0):
             )
             # C118
             data_site["idc_bww_energie_finale_ecs_comptage_ecs_inclus_mj"] = fonction_idc_bww_energie_finale_ecs_comptage_ecs_inclus_mj(
-                data_site["idc_eww_theorique_comptage_ecs_inclus_mj_m2"],
+                data_site["idc_eww_theorique_moyen_comptage_ecs_inclus_mj_m2"],
                 data_site["idc_sre_m2"],
                 data_site["periode_nb_jours"],
                 )
-
-            data_site["idc_bww_energie_finale_ecs_comptage_ecs_non_inclus_mj"] = 0
-
-            # C119
-            data_site["idc_eww_part_energie_finale_ecs_comptage_ecs_inclus_mj_m2"] = fonction_idc_eww_part_energie_finale_ecs_comptage_ecs_inclus_mj_m2(
-                data_site["idc_bww_energie_finale_ecs_comptage_ecs_inclus_mj"],
-                data_site["idc_sre_m2"],
-                )
-            
+           
             # Chauffage
             # C120
             data_site["idc_bh_energie_finale_chauffage_comptage_ecs_inclus_mj"] = fonction_idc_bh_energie_finale_chauffage_comptage_ecs_inclus_mj(
@@ -225,24 +214,48 @@ def fonction_note_calcul_idc(data_site, df_meteo_tre200d0):
                 )
             # C123
             data_site["idc_eh_part_energie_finale_chauffage_climatiquement_corrige_comptage_ecs_inclus_mj_m2"] = fonction_idc_eh_part_energie_finale_chauffage_climatiquement_corrige_comptage_ecs_inclus_mj_m2(
-                data_site["idc_eww_part_energie_finale_ecs_comptage_ecs_inclus_mj_m2"],
+                data_site["idc_bh_energie_finale_chauffage_comptage_ecs_inclus_mj"],
                 data_site["idc_sre_m2"],
                 DJ_REF_ANNUELS,
-                data_site["dj_periode"]
-            )
+                data_site["dj_periode"],
+                )
             # Total
             # C124
             data_site["idc_resultat_comptage_ecs_inclus_mj_m2"] = fonction_idc_resultat_comptage_ecs_inclus_mj_m2(
                 data_site["idc_eh_part_energie_finale_chauffage_climatiquement_corrige_comptage_ecs_inclus_mj_m2"],
-                data_site["idc_eww_part_energie_finale_ecs_comptage_ecs_inclus_mj_m2"],
-            )
+                data_site["idc_eww_theorique_moyen_comptage_ecs_inclus_mj_m2"],
+                )
+            
+            # Variante ECS séparé
+            data_site["idc_bww_energie_finale_ecs_comptage_ecs_non_inclus_mj"] = 0
+            data_site["idc_eww_part_energie_finale_ecs_comptage_ecs_non_inclus_mj_m2"] = 0
+            data_site["idc_bh_energie_finale_chauffage_comptage_ecs_non_inclus_mj"] = 0
+            data_site["idc_eh_part_energie_finale_chauffage_climatiquement_corrige_comptage_ecs_non_inclus_mj_m2"] = 0
+            data_site["idc_resultat_comptage_ecs_non_inclus_mj_m2"] = 0
+            data_site["idc_ecs_agent_energetique_ef_cad_reparti_kwh"] = 0
+            data_site["idc_ecs_agent_energetique_ef_cad_tarife_kwh"] = 0
+            data_site["idc_ecs_agent_energetique_ef_electricite_pac_avant_kwh"] = 0
+            data_site["idc_ecs_agent_energetique_ef_electricite_pac_apres_kwh"] = 0
+            data_site["idc_ecs_agent_energetique_ef_electricite_directe_kwh"] = 0
+            data_site["idc_ecs_agent_energetique_ef_gaz_naturel_m3"] = 0
+            data_site["idc_ecs_agent_energetique_ef_gaz_naturel_kwh"] = 0
+            data_site["idc_ecs_agent_energetique_ef_mazout_litres"] = 0
+            data_site["idc_ecs_agent_energetique_ef_mazout_kg"] = 0
+            data_site["idc_ecs_agent_energetique_ef_mazout_kwh"] = 0
+            data_site["idc_ecs_agent_energetique_ef_bois_buches_dur_stere"] = 0
+            data_site["idc_ecs_agent_energetique_ef_bois_buches_tendre_stere"] = 0
+            data_site["idc_ecs_agent_energetique_ef_bois_buches_tendre_kwh"] = 0
+            data_site["idc_ecs_agent_energetique_ef_pellets_m3"] = 0
+            data_site["idc_ecs_agent_energetique_ef_pellets_kg"] = 0
+            data_site["idc_ecs_agent_energetique_ef_pellets_kwh"] = 0
+            data_site["idc_ecs_agent_energetique_ef_plaquettes_m3"] = 0
+            data_site["idc_ecs_agent_energetique_ef_plaquettes_kwh"] = 0
+            data_site["idc_ecs_agent_energetique_ef_autre_kwh"] = 0
 
         # cas comptage ECS pas inclus
         else:
             # ECS
             # C118
-            data_site["idc_bww_energie_finale_ecs_comptage_ecs_inclus_mj"] = 0
-            
             data_site["idc_bww_energie_finale_ecs_comptage_ecs_non_inclus_mj"] = fonction_idc_bww_energie_finale_ecs_comptage_ecs_non_inclus_mj(
                 data_site["idc_ecs_agent_energetique_ef_cad_reparti_kwh"],
                 data_site["idc_ecs_agent_energetique_ef_cad_tarife_kwh"],
@@ -296,8 +309,6 @@ def fonction_note_calcul_idc(data_site, df_meteo_tre200d0):
                 )
             
             # C119
-            data_site["idc_eww_theorique_comptage_ecs_inclus_mj_m2"] = 0
-            
             data_site["idc_eww_part_energie_finale_ecs_comptage_ecs_non_inclus_mj_m2"] = fonction_idc_eww_part_energie_finale_ecs_comptage_ecs_non_inclus_mj_m2(
                 data_site["idc_bww_energie_finale_ecs_comptage_ecs_non_inclus_mj"],
                 data_site["idc_sre_m2"])
@@ -367,12 +378,21 @@ def fonction_note_calcul_idc(data_site, df_meteo_tre200d0):
                 data_site["idc_eh_part_energie_finale_chauffage_climatiquement_corrige_comptage_ecs_non_inclus_mj_m2"],
                 data_site["idc_eww_part_energie_finale_ecs_comptage_ecs_non_inclus_mj_m2"],
             )
+            
+            # Variante ECS intégré
+            data_site["idc_eww_theorique_moyen_comptage_ecs_inclus_mj_m2"] = 0
+            data_site["idc_bww_energie_finale_ecs_comptage_ecs_inclus_mj"] = 0
+            data_site["idc_eww_part_energie_finale_ecs_comptage_ecs_inclus_mj_m2"] = 0
+            data_site["idc_bh_energie_finale_chauffage_comptage_ecs_inclus_mj"] = 0
+            data_site["idc_eh_part_energie_finale_chauffage_climatiquement_corrige_comptage_ecs_inclus_mj_m2"] = 0
+            data_site["idc_resultat_comptage_ecs_inclus_mj_m2"] = 0
+
 
 
     except Exception as e:
         print("error", e)
         # ECS
-        data_site["idc_eww_pondere_mj_m2"] = 0
+        data_site["idc_eww_theorique_moyen_comptage_ecs_inclus_mj_m2"] = 0
         data_site["idc_bww_energie_finale_ecs_comptage_ecs_inclus_mj"] = 0
         data_site["idc_bww_energie_finale_ecs_comptage_ecs_non_inclus_mj"] = 0
         data_site["idc_eww_part_energie_finale_ecs_comptage_ecs_inclus_mj_m2"] = 0
@@ -388,23 +408,139 @@ def fonction_note_calcul_idc(data_site, df_meteo_tre200d0):
 
     
 
-    # générer dataframe df_list
-    df_list = make_dataframe_df_list(data_site, DJ_REF_ANNUELS)
+    # générer dataframe df_list_idc
+    df_list_idc = make_dataframe_df_list_idc(data_site, DJ_REF_ANNUELS)
 
     # # df_agent_energetique
-    # df_agent_energetique = make_dataframe_df_agent_energetique(
-    #     data_site,
-    #     FACTEUR_PONDERATION_MAZOUT,
-    #     FACTEUR_PONDERATION_GAZ_NATUREL,
-    #     FACTEUR_PONDERATION_BOIS_BUCHES_DUR,
-    #     FACTEUR_PONDERATION_BOIS_BUCHES_TENDRE,
-    #     FACTEUR_PONDERATION_PELLETS,
-    #     FACTEUR_PONDERATION_PLAQUETTES,
-    #     FACTEUR_PONDERATION_CAD,
-    #     FACTEUR_PONDERATION_ELECTRICITE_PAC,
-    #     FACTEUR_PONDERATION_ELECTRICITE_DIRECTE,
-    #     FACTEUR_PONDERATION_AUTRE,
-    # )
+    (
+        data_site["idc_agent_energetique_ef_mazout_somme_mj"],
+        data_site["idc_agent_energetique_ef_gaz_naturel_somme_mj"],
+        data_site["idc_agent_energetique_ef_bois_buches_dur_somme_mj"],
+        data_site["idc_agent_energetique_ef_bois_buches_tendre_somme_mj"],
+        data_site["idc_agent_energetique_ef_pellets_somme_mj"],
+        data_site["idc_agent_energetique_ef_plaquettes_somme_mj"],
+        data_site["idc_agent_energetique_ef_cad_reparti_somme_mj"],
+        data_site["idc_agent_energetique_ef_cad_tarife_somme_mj"],
+        data_site["idc_agent_energetique_ef_electricite_pac_avant_somme_mj"],
+        data_site["idc_agent_energetique_ef_electricite_pac_apres_somme_mj"],
+        data_site["idc_agent_energetique_ef_electricite_directe_somme_mj"],
+        data_site["idc_agent_energetique_ef_autre_somme_mj"]
+    ) = fonction_conversion_energie_idc(
+        data_site["idc_agent_energetique_ef_cad_reparti_kwh"],
+        data_site["idc_agent_energetique_ef_cad_tarife_kwh"],
+        data_site["idc_agent_energetique_ef_electricite_pac_avant_kwh"],
+        data_site["idc_agent_energetique_ef_electricite_pac_apres_kwh"],
+        data_site["idc_agent_energetique_ef_electricite_directe_kwh"],
+        data_site["idc_agent_energetique_ef_gaz_naturel_m3"],
+        data_site["idc_agent_energetique_ef_gaz_naturel_kwh"],
+        data_site["idc_agent_energetique_ef_mazout_litres"],
+        data_site["idc_agent_energetique_ef_mazout_kg"],
+        data_site["idc_agent_energetique_ef_mazout_kwh"],
+        data_site["idc_agent_energetique_ef_bois_buches_dur_stere"],
+        data_site["idc_agent_energetique_ef_bois_buches_tendre_stere"],
+        data_site["idc_agent_energetique_ef_bois_buches_tendre_kwh"],
+        data_site["idc_agent_energetique_ef_pellets_m3"],
+        data_site["idc_agent_energetique_ef_pellets_kg"],
+        data_site["idc_agent_energetique_ef_pellets_kwh"],
+        data_site["idc_agent_energetique_ef_plaquettes_m3"],
+        data_site["idc_agent_energetique_ef_plaquettes_kwh"],
+        data_site["idc_agent_energetique_ef_autre_kwh"],
+        data_site["idc_ecs_agent_energetique_ef_cad_reparti_kwh"],
+        data_site["idc_ecs_agent_energetique_ef_cad_tarife_kwh"],
+        data_site["idc_ecs_agent_energetique_ef_electricite_pac_avant_kwh"],
+        data_site["idc_ecs_agent_energetique_ef_electricite_pac_apres_kwh"],
+        data_site["idc_ecs_agent_energetique_ef_electricite_directe_kwh"],
+        data_site["idc_ecs_agent_energetique_ef_gaz_naturel_m3"],
+        data_site["idc_ecs_agent_energetique_ef_gaz_naturel_kwh"],
+        data_site["idc_ecs_agent_energetique_ef_mazout_litres"],
+        data_site["idc_ecs_agent_energetique_ef_mazout_kg"],
+        data_site["idc_ecs_agent_energetique_ef_mazout_kwh"],
+        data_site["idc_ecs_agent_energetique_ef_bois_buches_dur_stere"],
+        data_site["idc_ecs_agent_energetique_ef_bois_buches_tendre_stere"],
+        data_site["idc_ecs_agent_energetique_ef_bois_buches_tendre_kwh"],
+        data_site["idc_ecs_agent_energetique_ef_pellets_m3"],
+        data_site["idc_ecs_agent_energetique_ef_pellets_kg"],
+        data_site["idc_ecs_agent_energetique_ef_pellets_kwh"],
+        data_site["idc_ecs_agent_energetique_ef_plaquettes_m3"],
+        data_site["idc_ecs_agent_energetique_ef_plaquettes_kwh"],
+        data_site["idc_ecs_agent_energetique_ef_autre_kwh"],
+        IDC_CONVERSION_CAD_REPARTI_MJ_KWH,
+        IDC_CONVERSION_CAD_TARIFE_MJ_KWH,
+        IDC_CONVERSION_ELECTRICITE_PAC_AVANT_MJ_KWH,
+        IDC_CONVERSION_ELECTRICITE_PAC_APRES_MJ_KWH,
+        IDC_CONVERSION_ELECTRICITE_DIRECTE_MJ_KWH,
+        IDC_CONVERSION_GAZ_NATUREL_MJ_M3,
+        IDC_CONVERSION_GAZ_NATUREL_MJ_KWH,
+        IDC_CONVERSION_MAZOUT_MJ_LITRES,
+        IDC_CONVERSION_MAZOUT_MJ_KG,
+        IDC_CONVERSION_MAZOUT_MJ_KWH,
+        IDC_CONVERSION_BOIS_BUCHES_DUR_MJ_STERE,
+        IDC_CONVERSION_BOIS_BUCHES_TENDRE_MJ_STERE,
+        IDC_CONVERSION_BOIS_BUCHES_TENDRE_MJ_KWH,
+        IDC_CONVERSION_PELLETS_MJ_M3,
+        IDC_CONVERSION_PELLETS_MJ_KG,
+        IDC_CONVERSION_PELLETS_MJ_KWH,
+        IDC_CONVERSION_PLAQUETTES_MJ_M3,
+        IDC_CONVERSION_PLAQUETTES_MJ_KWH,
+        IDC_CONVERSION_AUTRE_MJ_KWH,
+        IDC_FACTEUR_PONDERATION_CAD,
+        IDC_FACTEUR_PONDERATION_GAZ_NATUREL,
+        IDC_FACTEUR_PONDERATION_BOIS_BUCHES_DUR,
+        IDC_FACTEUR_PONDERATION_BOIS_BUCHES_TENDRE,
+        IDC_FACTEUR_PONDERATION_PELLETS,
+        IDC_FACTEUR_PONDERATION_PLAQUETTES,
+        IDC_FACTEUR_PONDERATION_MAZOUT,
+        IDC_FACTEUR_PONDERATION_ELECTRICITE_PAC_AVANT,
+        IDC_FACTEUR_PONDERATION_ELECTRICITE_PAC_APRES,
+        IDC_FACTEUR_PONDERATION_ELECTRICITE_DIRECTE,
+        IDC_FACTEUR_PONDERATION_AUTRE,
+        )
+
+    (df_agent_energetique_idc_sum,
+        df_agent_energetique_idc_mazout,
+        df_agent_energetique_idc_gaz_naturel,
+        df_agent_energetique_idc_bois_buches_dur,
+        df_agent_energetique_idc_bois_buches_tendre,
+        df_agent_energetique_idc_pellets,
+        df_agent_energetique_idc_plaquettes,
+        df_agent_energetique_idc_cad_reparti,
+        df_agent_energetique_idc_cad_tarife,
+        df_agent_energetique_idc_electricite_pac_avant,
+        df_agent_energetique_idc_electricite_pac_apres,
+        df_agent_energetique_idc_electricite_directe,
+        df_agent_energetique_idc_autre,
+    ) = make_dataframe_df_agent_energetique_idc(
+        data_site,
+        IDC_CONVERSION_CAD_REPARTI_MJ_KWH,
+        IDC_CONVERSION_CAD_TARIFE_MJ_KWH,
+        IDC_CONVERSION_ELECTRICITE_PAC_AVANT_MJ_KWH,
+        IDC_CONVERSION_ELECTRICITE_PAC_APRES_MJ_KWH,
+        IDC_CONVERSION_ELECTRICITE_DIRECTE_MJ_KWH,
+        IDC_CONVERSION_GAZ_NATUREL_MJ_M3,
+        IDC_CONVERSION_GAZ_NATUREL_MJ_KWH,
+        IDC_CONVERSION_MAZOUT_MJ_LITRES,
+        IDC_CONVERSION_MAZOUT_MJ_KG,
+        IDC_CONVERSION_MAZOUT_MJ_KWH,
+        IDC_CONVERSION_BOIS_BUCHES_DUR_MJ_STERE,
+        IDC_CONVERSION_BOIS_BUCHES_TENDRE_MJ_STERE,
+        IDC_CONVERSION_BOIS_BUCHES_TENDRE_MJ_KWH,
+        IDC_CONVERSION_PELLETS_MJ_M3,
+        IDC_CONVERSION_PELLETS_MJ_KG,
+        IDC_CONVERSION_PELLETS_MJ_KWH,
+        IDC_CONVERSION_PLAQUETTES_MJ_M3,
+        IDC_CONVERSION_PLAQUETTES_MJ_KWH,
+        IDC_CONVERSION_AUTRE_MJ_KWH,
+        IDC_FACTEUR_PONDERATION_MAZOUT,
+        IDC_FACTEUR_PONDERATION_GAZ_NATUREL,
+        IDC_FACTEUR_PONDERATION_BOIS_BUCHES_DUR,
+        IDC_FACTEUR_PONDERATION_BOIS_BUCHES_TENDRE,
+        IDC_FACTEUR_PONDERATION_PELLETS,
+        IDC_FACTEUR_PONDERATION_PLAQUETTES,
+        IDC_FACTEUR_PONDERATION_CAD,
+        IDC_FACTEUR_PONDERATION_ELECTRICITE_PAC_AVANT,
+        IDC_FACTEUR_PONDERATION_ELECTRICITE_PAC_APRES,
+        IDC_FACTEUR_PONDERATION_ELECTRICITE_DIRECTE,
+        IDC_FACTEUR_PONDERATION_AUTRE)
 
     # # df_meteo_note_calcul
     # df_meteo_note_calcul = make_dataframe_df_meteo_note_calcul(
@@ -464,10 +600,19 @@ def fonction_note_calcul_idc(data_site, df_meteo_tre200d0):
 
     return (
         df_periode_list,
-        df_list,
-        df_agent_energetique,
-        df_meteo_note_calcul,
-        df_results,
-        formula_facteur_ponderation_moyen_texte,
-        formula_facteur_ponderation_moyen,
+        df_list_idc,
+        df_agent_energetique_idc_sum,
+        df_agent_energetique_idc_mazout,
+        df_agent_energetique_idc_gaz_naturel,
+        df_agent_energetique_idc_bois_buches_dur,
+        df_agent_energetique_idc_bois_buches_tendre,
+        df_agent_energetique_idc_pellets,
+        df_agent_energetique_idc_plaquettes,
+        df_agent_energetique_idc_cad_reparti,
+        df_agent_energetique_idc_cad_tarife,
+        df_agent_energetique_idc_electricite_pac_avant,
+        df_agent_energetique_idc_electricite_pac_apres,
+        df_agent_energetique_idc_electricite_directe,
+        df_agent_energetique_idc_autre,
+
     )

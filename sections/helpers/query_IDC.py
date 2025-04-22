@@ -227,7 +227,6 @@ def show_map(data: List[Dict], centroid: Tuple[float, float]) -> None:
     st.pydeck_chart(deck)
 
 
-@st.cache_data
 def show_dataframe(df):
     df = pd.DataFrame(df)
 

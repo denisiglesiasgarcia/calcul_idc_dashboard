@@ -520,12 +520,14 @@ class EnergyAgentUI:
         Args:
             total: The total energy value
         """
-        if total <= 0:
-            st.warning(
-                f"Veuillez renseigner une quantité d'énergie utilisée sur la période ({total})"
-            )
-        else:
-            st.success(f"Total énergie: {total:.2f} kWh")
+        try:
+            if total <= 0:
+                st.warning(
+                    f"Veuillez renseigner une quantité d'énergie utilisée sur la période ({total})"
+                )
+        except Exception as e:
+            st.error(f"Erreur : {e}")
+
 
 
 def display_agents_energetiques_idc(data: Dict, data_db: Optional[Dict] = None, is_ecs: bool = False, title: Optional[str] = None) -> float:

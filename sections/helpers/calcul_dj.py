@@ -89,3 +89,4 @@ def calcul_dj_periode(df_meteo_tre200d0, periode_start, periode_end):
     ]["DJ_theta0_16"].sum()
     dj_periode = float(dj_periode)
     return dj_periode
+

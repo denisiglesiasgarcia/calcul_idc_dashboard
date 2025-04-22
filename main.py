@@ -26,12 +26,20 @@ from sections.helpers.agents_energetiques_idc import (
     display_agents_energetiques_idc
 )
 
-from sections.helpers.note_calcul.constantes import (
-    DJ_TEMPERATURE_REFERENCE,
-    DJ_REF_ANNUELS,
-
+from sections.helpers.note_calcul.remarques_idc import (
+    remarques_note_calcul_idc
 )
 
+from sections.helpers.note_calcul_idc_main import (
+    fonction_note_calcul_idc,
+)
+
+from sections.helpers.resultats_idc import (
+    display_resultats_idc
+)
+
+# streamlit wide mode
+st.set_page_config(layout="wide")
 
 # ---------------------------------------------------------------------------------------
 # IDC query
@@ -44,9 +52,6 @@ now = datetime.datetime.now()
 if (now - last_update_time_meteo).days > 1:
     last_update_time_meteo = now
     st.session_state["df_meteo_tre200d0"] = get_meteo_data()
-
-# streamlit wide mode
-st.set_page_config(layout="wide")
 
 @st.cache_data
 def get_all_addresses(db_path: str = "adresses_egid.db") -> pd.DataFrame:
@@ -261,24 +266,6 @@ with tab2:
         )
 
     with tab2_col2:
-        # Affectations SRE
-        st.session_state["data_site"]["somme_pourcentage_affectations"] = (
-            display_affectations_idc(st.session_state["data_site"]["idc_sre_m2"])
-        )
-
-
-
-    tab3_col1, tab3_col2 = st.columns(2)
-    with tab3_col1:
-        # Agents énergétiques
-        st.session_state["data_site"]["idc_somme_agents_energetiques_mj"] = (
-            display_agents_energetiques_idc(
-                st.session_state["data_site"],
-                is_ecs=False
-            )
-        )
-
-    with tab3_col2:
         # Production ECS
         st.markdown(
             '<span style="font-size:1.2em;">**Production ECS**</span>',
@@ -307,21 +294,150 @@ with tab2:
                     is_ecs=True
                 )
             )
-        
+
+    tab3_col1, tab3_col2 = st.columns(2)
+    with tab3_col1:
+        # Agents énergétiques
+        st.session_state["data_site"]["idc_somme_agents_energetiques_mj"] = (
+            display_agents_energetiques_idc(
+                st.session_state["data_site"],
+                is_ecs=False
+            )
+        )
+
+    with tab3_col2:
+        # Affectations SRE
+        st.session_state["data_site"]["somme_pourcentage_affectations"] = (
+            display_affectations_idc(st.session_state["data_site"]["idc_sre_m2"])
+        )
         
 
     # Subheader for the calculation period section
     st.subheader("Résultats du calcul de l'IDC", divider="rainbow")
-
-    try:
-        # cas comptage ECS inclus
-        if st.session_state["data_site"]["comptage_ecs_inclus"]:
-            idc_eww_pondere_mj_m2 = 
-
-        # cas comptage ECS séparé
-        else:
-            idc_eww_pondere_mj_m2 = 0
-    except Exception as e:
-        st.error(f"Erreur lors du calcul de l'IDC: {e}")
-
+    display_resultats_idc(
+        st.session_state["data_site"],)
+    
+    
+    st.subheader("Debug", divider="rainbow")
     st.write(st.session_state["data_site"])
+
+with tab3:
+    # ---------------------------------------------------------------------------------------
+    st.subheader("Notes de calcul", divider="rainbow")
+    if (st.session_state["data_site"]["idc_sre_m2"] > 0 and
+    st.session_state["data_site"]["somme_pourcentage_affectations"] > 0 and
+    st.session_state["data_site"]["idc_somme_agents_energetiques_mj"] > 0):
+        (
+            df_periode_list,
+            df_list_idc,
+            df_agent_energetique_idc_sum,
+            df_agent_energetique_idc_mazout,
+            df_agent_energetique_idc_gaz_naturel,
+            df_agent_energetique_idc_bois_buches_dur,
+            df_agent_energetique_idc_bois_buches_tendre,
+            df_agent_energetique_idc_pellets,
+            df_agent_energetique_idc_plaquettes,
+            df_agent_energetique_idc_cad_reparti,
+            df_agent_energetique_idc_cad_tarife,
+            df_agent_energetique_idc_electricite_pac_avant,
+            df_agent_energetique_idc_electricite_pac_apres,
+            df_agent_energetique_idc_electricite_directe,
+            df_agent_energetique_idc_autre,
+        ) = fonction_note_calcul_idc(
+            st.session_state["data_site"],
+            st.session_state["df_meteo_tre200d0"],
+        )
+        st.markdown("##### Période de calcul")
+        st.dataframe(
+            df_periode_list,
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.markdown("##### Calcul IDC")
+        st.dataframe(
+            df_list_idc,
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.markdown("##### Agents énergétiques")
+        st.dataframe(
+            df_agent_energetique_idc_sum,
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.markdown("###### Mazout")
+        st.dataframe(
+            df_agent_energetique_idc_mazout,
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.markdown("###### Gaz naturel")
+        st.dataframe(
+            df_agent_energetique_idc_gaz_naturel,
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.markdown("###### Bois bûches dur")
+        st.dataframe(
+            df_agent_energetique_idc_bois_buches_dur,
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.markdown("###### Bois bûches tendre")
+        st.dataframe(
+            df_agent_energetique_idc_bois_buches_tendre,
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.markdown("###### Pellets")
+        st.dataframe(
+            df_agent_energetique_idc_pellets,
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.markdown("###### Plaquettes")
+        st.dataframe(
+            df_agent_energetique_idc_plaquettes,
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.markdown("###### CAD réparti")
+        st.dataframe(
+            df_agent_energetique_idc_cad_reparti,
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.markdown("###### CAD tarifé")
+        st.dataframe(
+            df_agent_energetique_idc_cad_tarife,
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.markdown("###### Electricité PAC avant")
+        st.dataframe(
+            df_agent_energetique_idc_electricite_pac_avant,
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.markdown("###### Electricité PAC après")
+        st.dataframe(
+            df_agent_energetique_idc_electricite_pac_apres,
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.markdown("###### Electricité directe")
+        st.dataframe(
+            df_agent_energetique_idc_electricite_directe,
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.markdown("###### Autre")
+        st.dataframe(
+            df_agent_energetique_idc_autre,
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.warning("Veuillez d'abord renseigner l'onglet 'Calculer un IDC' avant de générer la note de calcul.")
+    # remaques note calcul idc
+    remarques_note_calcul_idc()
