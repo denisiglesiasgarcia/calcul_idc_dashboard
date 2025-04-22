@@ -43,7 +43,7 @@ st.set_page_config(
     layout="wide",
     page_title="Outil de calcul de l'IDC",
     page_icon="📈",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",
     menu_items={
         "Get Help": "https://www.streamlit.io/community",
         "Report a bug": "https://github.com/yourusername/yourrepo/issues",
