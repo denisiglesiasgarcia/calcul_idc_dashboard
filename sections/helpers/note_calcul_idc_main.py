@@ -85,39 +85,99 @@ from sections.helpers.note_calcul.constantes import (
     IDC_EWW_PISCINES_COUVERTES_MJ_M2
 )
 
-
+import pandas as pd
+import streamlit as st
 
 
 def fonction_note_calcul_idc(data_site, df_meteo_tre200d0):
     """
-    déjà dans data_site:
-    - data_site["periode_start"]
-    - data_site["periode_end"]
-    - data_site["periode_nb_jours"]
-    - data_site["idc_sre_m2"]
- 
+    Calculates various energy-related metrics for a given site based on input data.
+    This function processes energy consumption data for a site, calculates degree days,
+    and computes energy metrics for heating and domestic hot water (ECS) based on whether
+    ECS metering is included or not. It also handles potential errors during calculations
+    and ensures that all required metrics are initialized.
+    Parameters:
+        data_site (dict): A dictionary containing site-specific data. Expected keys include:
+            - "periode_start" (str): Start date of the period in "YYYY-MM-DD" format.
+            - "periode_end" (str): End date of the period in "YYYY-MM-DD" format.
+            - "periode_nb_jours" (int): Number of days in the period.
+            - "idc_sre_m2" (float): Surface area in square meters.
+            - "sre_pourcentage_*" (float): Percentages of different building types (e.g., habitat_collectif, habitat_individuel, etc.).
+            - "comptage_ecs_inclus" (bool): Whether ECS metering is included.
+            - "sre_pourcentage_habitat_collectif"
+            - "sre_pourcentage_habitat_individuel"
+            - "sre_pourcentage_administration"
+            - "sre_pourcentage_ecoles"
+            - "sre_pourcentage_commerce"
+            - "sre_pourcentage_restauration"
+            - "sre_pourcentage_lieux_de_rassemblement"
+            - "sre_pourcentage_hopitaux"
+            - "sre_pourcentage_industrie"
+            - "sre_pourcentage_depots"
+            - "sre_pourcentage_installations_sportives"
+            - "sre_pourcentage_piscines_couvertes"
+            - "sre_pourcentage_autre"
 
-    Calculs réalisés ici:
-
-
-
-    éléments créés:
-    - df_periode_list (dataframe des periodes considérées)
-
-
+        df_meteo_tre200d0 (pd.DataFrame): A DataFrame containing meteorological data with at least:
+            - "time" (datetime): Timestamps for the meteorological data.
+    Returns:
+        None: Updates the `data_site` dictionary in place with the following keys:
+            - "dj_periode" (float): Degree days for the specified period.
+            - "idc_eww_theorique_moyen_comptage_ecs_inclus_mj_m2" (float): Theoretical average ECS energy consumption (MJ/m²).
+            - "idc_bww_energie_finale_ecs_comptage_ecs_inclus_mj" (float): Final ECS energy consumption (MJ).
+            - "idc_bww_energie_finale_ecs_comptage_ecs_non_inclus_mj" (float): Final ECS energy consumption without metering (MJ).
+            - "idc_eww_part_energie_finale_ecs_comptage_ecs_non_inclus_mj_m2" (float): ECS energy consumption per m² without metering (MJ/m²).
+            - "idc_bh_energie_finale_chauffage_comptage_ecs_inclus_mj" (float): Final heating energy consumption with metering (MJ).
+            - "idc_bh_energie_finale_chauffage_comptage_ecs_non_inclus_mj" (float): Final heating energy consumption without metering (MJ).
+            - "idc_eh_part_energie_finale_chauffage_climatiquement_corrige_comptage_ecs_inclus_mj_m2" (float): Climate-corrected heating energy consumption per m² with metering (MJ/m²).
+            - "idc_eh_part_energie_finale_chauffage_climatiquement_corrige_comptage_ecs_non_inclus_mj_m2" (float): Climate-corrected heating energy consumption per m² without metering (MJ/m²).
+            - "idc_resultat_comptage_ecs_inclus_mj_m2" (float): Final energy result with metering (MJ/m²).
+            - "idc_resultat_comptage_ecs_non_inclus_mj_m2" (float): Final energy result without metering (MJ/m²).
+    Raises:
+        Exception: If any error occurs during calculations, it initializes all metrics to 0
+                   and logs the error message.
+    Notes:
+        - The function ensures that "periode_start" and "periode_end" are properly formatted
+          and compatible with the meteorological data.
+        - Degree days are calculated using the `calcul_dj_periode` function.
+        - Energy metrics are computed using various helper functions (e.g., `fonction_idc_*`).
+        - If ECS metering is included, separate calculations are performed for heating and ECS.
+        - If ECS metering is not included, combined calculations are performed for heating and ECS.
+        - In case of errors, all metrics are set to 0 to avoid further issues.
     """
 
-    # df_periode_list
-    df_periode_list = make_dataframe_df_periode_list(
-        data_site["periode_start"], data_site["periode_end"]
-    )
+    # Ensure periode_start and periode_end are in the correct format for comparison
+    try:
+        # Explicitly convert periode_start and periode_end to the same format as df_meteo_tre200d0["time"]
+        periode_start = pd.to_datetime(data_site["periode_start"]).strftime("%Y-%m-%d")
+        periode_end = pd.to_datetime(data_site["periode_end"]).strftime("%Y-%m-%d")
+        
+        # Convert dates back to pandas datetime objects
+        periode_start = pd.to_datetime(periode_start)
+        periode_end = pd.to_datetime(periode_end)
 
-    # météo
-    data_site["dj_periode"] = calcul_dj_periode(
-        df_meteo_tre200d0,
-        data_site["periode_start"],
-        data_site["periode_end"],
-    )
+        # Calculate degree days
+        data_site["dj_periode"] = calcul_dj_periode(
+            df_meteo_tre200d0,
+            periode_start,
+            periode_end,
+        )
+        
+        # Convert to float and add validation
+        data_site["dj_periode"] = float(data_site["dj_periode"])
+        
+        # Validate result
+        if data_site["dj_periode"] <= 0:
+            st.warning(f"Le calcul des degrés-jours a retourné une valeur nulle ou négative: {data_site['dj_periode']}. Veuillez vérifier les dates choisies.")
+            # Still set a minimum value to avoid division by zero errors
+            data_site["dj_periode"] = 0.1
+    except Exception as e:
+        # Set dj_periode to a small non-zero value to avoid division by zero
+        data_site["dj_periode"] = 0.1
+        # Show error to user
+        error_message = f"Erreur lors du calcul des degrés-jours: {str(e)}"
+        st.error(error_message)
+        print(error_message)
 
     # IDC
     try:
@@ -387,8 +447,6 @@ def fonction_note_calcul_idc(data_site, df_meteo_tre200d0):
             data_site["idc_eh_part_energie_finale_chauffage_climatiquement_corrige_comptage_ecs_inclus_mj_m2"] = 0
             data_site["idc_resultat_comptage_ecs_inclus_mj_m2"] = 0
 
-
-
     except Exception as e:
         print("error", e)
         # ECS
@@ -405,13 +463,85 @@ def fonction_note_calcul_idc(data_site, df_meteo_tre200d0):
         # Total
         data_site["idc_resultat_comptage_ecs_inclus_mj_m2"] = 0
         data_site["idc_resultat_comptage_ecs_non_inclus_mj_m2"] = 0
-
     
+    return data_site
+    
+def fonction_note_calcul_idc_dataframe(data_site, df_meteo_tre200d0):
+    """
+    Generates various dataframes and performs energy conversion calculations 
+    for the IDC (Indice de Consommation) dashboard.
+    Args:
+        data_site (dict): A dictionary containing site-specific data, including 
+            energy consumption and period information. Expected keys include:
+            - "periode_start": Start date of the period.
+            - "periode_end": End date of the period.
+            - Various energy consumption metrics (e.g., kWh, m3, liters, etc.).
+        df_meteo_tre200d0 (pd.DataFrame): A DataFrame containing meteorological 
+            data for the specified period.
+    Returns:
+        tuple: A tuple containing the following dataframes:
+            - df_periode_list (pd.DataFrame): DataFrame representing the list 
+              of periods.
+            - df_list_idc (pd.DataFrame): DataFrame containing IDC-related 
+              metrics.
+            - df_agent_energetique_idc_sum (pd.DataFrame): DataFrame summarizing 
+              energy consumption by energy source.
+            - df_agent_energetique_idc_mazout (pd.DataFrame): DataFrame for 
+              mazout energy consumption.
+            - df_agent_energetique_idc_gaz_naturel (pd.DataFrame): DataFrame for 
+              natural gas energy consumption.
+            - df_agent_energetique_idc_bois_buches_dur (pd.DataFrame): DataFrame 
+              for hardwood logs energy consumption.
+            - df_agent_energetique_idc_bois_buches_tendre (pd.DataFrame): 
+              DataFrame for softwood logs energy consumption.
+            - df_agent_energetique_idc_pellets (pd.DataFrame): DataFrame for 
+              pellets energy consumption.
+            - df_agent_energetique_idc_plaquettes (pd.DataFrame): DataFrame for 
+              wood chips energy consumption.
+            - df_agent_energetique_idc_cad_reparti (pd.DataFrame): DataFrame for 
+              district heating (repartition) energy consumption.
+            - df_agent_energetique_idc_cad_tarife (pd.DataFrame): DataFrame for 
+              district heating (tariff) energy consumption.
+            - df_agent_energetique_idc_electricite_pac_avant (pd.DataFrame): 
+              DataFrame for electricity consumption by heat pumps (before).
+            - df_agent_energetique_idc_electricite_pac_apres (pd.DataFrame): 
+              DataFrame for electricity consumption by heat pumps (after).
+            - df_agent_energetique_idc_electricite_directe (pd.DataFrame): 
+              DataFrame for direct electricity consumption.
+            - df_agent_energetique_idc_autre (pd.DataFrame): DataFrame for 
+              other energy sources.
+    Raises:
+        Exception: If an error occurs during the creation of the meteorological 
+        DataFrame for degree-day calculations.
+    Notes:
+        - This function relies on several helper functions, such as 
+          `make_dataframe_df_periode_list`, `make_dataframe_df_meteo_note_calcul`, 
+          `fonction_conversion_energie_idc`, and 
+          `make_dataframe_df_agent_energetique_idc`.
+        - The function performs energy conversion calculations using various 
+          constants (e.g., IDC_CONVERSION_* and IDC_FACTEUR_PONDERATION_*).
+    """
+    # df_periode_list
+    df_periode_list = make_dataframe_df_periode_list(
+        data_site["periode_start"], data_site["periode_end"]
+    )
+    
+    # météo
+    try:
+        df_meteo_tre200d0 = make_dataframe_df_meteo_note_calcul(
+            data_site["periode_start"],
+            data_site["periode_end"],
+            df_meteo_tre200d0,
+        )
+    except Exception as e:
+        print(
+            f"Erreur lors de la création du DataFrame de météo pour le calcul des degrés-jours. Erreur : {e}"
+        )
 
     # générer dataframe df_list_idc
     df_list_idc = make_dataframe_df_list_idc(data_site, DJ_REF_ANNUELS)
 
-    # # df_agent_energetique
+    # df_agent_energetique
     (
         data_site["idc_agent_energetique_ef_mazout_somme_mj"],
         data_site["idc_agent_energetique_ef_gaz_naturel_somme_mj"],
@@ -541,62 +671,6 @@ def fonction_note_calcul_idc(data_site, df_meteo_tre200d0):
         IDC_FACTEUR_PONDERATION_ELECTRICITE_PAC_APRES,
         IDC_FACTEUR_PONDERATION_ELECTRICITE_DIRECTE,
         IDC_FACTEUR_PONDERATION_AUTRE)
-
-    # # df_meteo_note_calcul
-    # df_meteo_note_calcul = make_dataframe_df_meteo_note_calcul(
-    #     data_site["periode_start"],
-    #     data_site["periode_end"],
-    #     df_meteo_tre200d0,
-    # )
-
-    # # df_results
-    # df_results = make_dataframe_df_results(
-    #     data_site["ef_avant_corr_kwh_m2"],
-    #     data_site["ef_objectif_pondere_kwh_m2"],
-    #     data_site["delta_ef_realisee_kwh_m2"],
-    #     data_site["delta_ef_visee_kwh_m2"],
-    #     data_site[
-    #         "energie_finale_apres_travaux_climatiquement_corrigee_renovee_pondere_kwh_m2"
-    #     ],
-    # )
-
-    # # latex text
-    # formula_facteur_ponderation_moyen_texte = r"facteur\_ponderation\_moyen = \frac{{(agent\_energetique\_mazout\_somme\_mj \times FACTEUR\_PONDERATION\_MAZOUT + \
-    #             agent\_energetique\_gaz\_naturel\_somme\_mj \times FACTEUR\_PONDERATION\_GAZ\_NATUREL + \
-    #             agent\_energetique\_bois\_buches\_dur\_somme\_mj \times FACTEUR\_PONDERATION\_BOIS\_BUCHES\_DUR + \
-    #             agent\_energetique\_bois\_buches\_tendre\_somme\_mj \times FACTEUR\_PONDERATION\_BOIS\_BUCHES\_TENDRE + \
-    #             agent\_energetique\_pellets\_somme\_mj \times FACTEUR\_PONDERATION\_PELLETS + \
-    #             agent\_energetique\_plaquettes\_somme\_mj \times FACTEUR\_PONDERATION\_PLAQUETTES + \
-    #             agent\_energetique\_cad\_somme\_mj \times FACTEUR\_PONDERATION\_CAD + \
-    #             agent\_energetique\_electricite\_pac\_somme\_mj \times FACTEUR\_PONDERATION\_ELECTRICITE\_PAC + \
-    #             agent\_energetique\_electricite\_directe\_somme\_mj \times FACTEUR\_PONDERATION\_ELECTRICITE\_DIRECTE + \
-    #             agent\_energetique\_autre\_somme\_mj \times FACTEUR\_PONDERATION\_AUTRE)}}{{(agent\_energetique\_somme\_kwh \times 3.6)}}"
-
-    # # latex formula
-    # formula_facteur_ponderation_moyen = make_latex_formula_facteur_ponderation_moyen(
-    #     data_site["agent_energetique_ef_mazout_somme_mj"],
-    #     data_site["agent_energetique_ef_gaz_naturel_somme_mj"],
-    #     data_site["agent_energetique_ef_bois_buches_dur_somme_mj"],
-    #     data_site["agent_energetique_ef_bois_buches_tendre_somme_mj"],
-    #     data_site["agent_energetique_ef_pellets_somme_mj"],
-    #     data_site["agent_energetique_ef_plaquettes_somme_mj"],
-    #     data_site["agent_energetique_ef_cad_somme_mj"],
-    #     data_site["agent_energetique_ef_electricite_pac_somme_mj"],
-    #     data_site["agent_energetique_ef_electricite_directe_somme_mj"],
-    #     data_site["agent_energetique_ef_autre_somme_mj"],
-    #     data_site["agent_energetique_ef_somme_kwh"],
-    #     data_site["facteur_ponderation_moyen"],
-    #     FACTEUR_PONDERATION_MAZOUT,
-    #     FACTEUR_PONDERATION_GAZ_NATUREL,
-    #     FACTEUR_PONDERATION_BOIS_BUCHES_DUR,
-    #     FACTEUR_PONDERATION_BOIS_BUCHES_TENDRE,
-    #     FACTEUR_PONDERATION_PELLETS,
-    #     FACTEUR_PONDERATION_PLAQUETTES,
-    #     FACTEUR_PONDERATION_CAD,
-    #     FACTEUR_PONDERATION_ELECTRICITE_PAC,
-    #     FACTEUR_PONDERATION_ELECTRICITE_DIRECTE,
-    #     FACTEUR_PONDERATION_AUTRE,
-    # )
 
     return (
         df_periode_list,

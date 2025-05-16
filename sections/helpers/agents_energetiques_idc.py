@@ -544,6 +544,7 @@ def display_agents_energetiques_idc(data: Dict, data_db: Optional[Dict] = None, 
     Returns:
         The total energy in MJ
     """
+
     # Choose the appropriate options list
     options_list = OPTIONS_AGENT_ENERGETIQUE_IDC_ECS if is_ecs else OPTIONS_AGENT_ENERGETIQUE_IDC
     

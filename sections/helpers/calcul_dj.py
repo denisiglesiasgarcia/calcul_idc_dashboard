@@ -83,10 +83,51 @@ def calcul_dj_periode(df_meteo_tre200d0, periode_start, periode_end):
     Returns:
     float: The sum of 'DJ_theta0_16' values for the specified period.
     """
-    dj_periode = df_meteo_tre200d0[
-        (df_meteo_tre200d0["time"] >= periode_start)
-        & (df_meteo_tre200d0["time"] <= periode_end)
-    ]["DJ_theta0_16"].sum()
-    dj_periode = float(dj_periode)
-    return dj_periode
-
+    # Ensure periode_start and periode_end are pandas Timestamp objects
+    try:
+        if not isinstance(periode_start, pd.Timestamp):
+            periode_start = pd.to_datetime(periode_start)
+        
+        if not isinstance(periode_end, pd.Timestamp):
+            periode_end = pd.to_datetime(periode_end)
+            
+        # Make sure the time column is also datetime
+        if not pd.api.types.is_datetime64_any_dtype(df_meteo_tre200d0["time"]):
+            df_meteo_tre200d0["time"] = pd.to_datetime(df_meteo_tre200d0["time"])
+        
+        # Convert periode_start and periode_end to the same date format as the time column
+        periode_start_str = periode_start.strftime("%Y-%m-%d")
+        periode_end_str = periode_end.strftime("%Y-%m-%d")
+        
+        # Convert back to datetime for consistent comparison
+        periode_start = pd.to_datetime(periode_start_str)
+        periode_end = pd.to_datetime(periode_end_str)
+        
+        # Print debug info
+        # print(f"Filtering meteo data from {periode_start} to {periode_end}")
+        # print(f"Meteo data time column type: {type(df_meteo_tre200d0['time'].iloc[0])}")
+        
+        # Filter the data
+        filtered_df = df_meteo_tre200d0[
+            (df_meteo_tre200d0["time"] >= periode_start) &
+            (df_meteo_tre200d0["time"] <= periode_end)
+        ]
+        
+        # Print how many rows were found
+        # print(f"Found {len(filtered_df)} days in the selected period")
+        
+        # Sum the DJ_theta0_16 values
+        dj_periode = filtered_df["DJ_theta0_16"].sum()
+        
+        # Check if the sum is valid
+        if pd.isna(dj_periode) or dj_periode <= 0:
+            # print(f"Warning: DJ_theta0_16 sum is {dj_periode}, which may indicate missing data")
+            # Return a small positive value instead of 0 to avoid division by zero
+            return 0.1
+            
+        return float(dj_periode)
+        
+    except Exception as e:
+        print(f"Error in calcul_dj_periode: {e}")
+        # Return a small positive value instead of 0 to avoid division by zero
+        return 0.1
