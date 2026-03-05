@@ -599,14 +599,54 @@ def refresh_adresses_db(
     url: str,
     db_path: str = "adresses_egid.db",
     chunk_size: int = 1000,
+    progress_bar=None,
+    status_text=None,
 ) -> int:
     """
     Fetch all unique address/EGID pairs from the SITG API and upsert them
     into the local SQLite database.
 
+    Args:
+        url:          SITG API endpoint (same URL used for IDC queries).
+        db_path:      Path to the local SQLite database.
+        chunk_size:   Records per API page.
+        progress_bar: Optional st.progress placeholder for visual feedback.
+        status_text:  Optional st.empty placeholder for status messages.
+
     Returns the total number of records saved.
-    Called from the sidebar refresh button; cache is cleared by the caller.
+    Cache invalidation is handled by the caller (get_all_addresses.clear()).
     """
+    def _status(msg: str) -> None:
+        """Update status text if a placeholder was provided."""
+        if status_text is not None:
+            status_text.caption(msg)
+        logging.info(f"refresh_adresses_db → {msg}")
+
+    def _progress(value: float) -> None:
+        """Update progress bar (0.0–1.0) if a placeholder was provided."""
+        if progress_bar is not None:
+            progress_bar.progress(value)
+
+    # --- Step 1: get total record count for accurate progress reporting ---
+    _status("Connexion au SITG — récupération du nombre total d'adresses...")
+    _progress(0.0)
+
+    count_params = {
+        "where": "1=1",
+        "returnCountOnly": "true",
+        "f": "json",
+    }
+    total_count = 0
+    try:
+        resp = requests.get(url, params=count_params)
+        resp.raise_for_status()
+        total_count = resp.json().get("count", 0)
+        _status(f"{total_count} adresses trouvées — début du téléchargement...")
+    except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+        # Non-fatal: progress will show indeterminate (always at 0) but continue
+        logging.warning(f"refresh_adresses_db → count request failed: {e}")
+
+    # --- Step 2: create/ensure table ---
     conn = sqlite3.connect(db_path)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS adresses_egid (
@@ -619,6 +659,7 @@ def refresh_adresses_db(
     offset = 0
     total_saved = 0
 
+    # --- Step 3: paginate and upsert ---
     while True:
         params = {
             "where": "1=1",
@@ -655,9 +696,18 @@ def refresh_adresses_db(
         total_saved += len(records)
         offset += len(features)
 
-        # API returned fewer records than requested — we have reached the end
+        # Update progress and status after each page
+        progress_value = min(total_saved / total_count, 1.0) if total_count > 0 else 0.0
+        _progress(progress_value)
+        _status(
+            f"Téléchargé {total_saved:,}"
+            + (f" / {total_count:,} adresses ({progress_value*100:.0f}%)" if total_count else " adresses...")
+        )
+
+        # API returned fewer records than requested — last page reached
         if len(features) < chunk_size:
             break
 
     conn.close()
+    _progress(1.0)
     return total_saved

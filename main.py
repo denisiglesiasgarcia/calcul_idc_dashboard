@@ -38,7 +38,6 @@ URL_INDICE_MOYENNES_3_ANS = (
 CURRENT_YEAR = datetime.now().year
 
 
-
 @st.cache_data
 def get_all_addresses(db_path: str = "adresses_egid.db") -> pl.DataFrame:
     """Load address/EGID pairs from SQLite. Cached by Streamlit."""
@@ -51,10 +50,12 @@ def get_all_addresses(db_path: str = "adresses_egid.db") -> pl.DataFrame:
         )
     except Exception as e:
         print(f"Error in get_all_addresses: {e}")
-        return pl.DataFrame({
-            "adresse": pl.Series([], dtype=pl.Utf8),
-            "egid": pl.Series([], dtype=pl.Utf8),
-        })
+        return pl.DataFrame(
+            {
+                "adresse": pl.Series([], dtype=pl.Utf8),
+                "egid": pl.Series([], dtype=pl.Utf8),
+            }
+        )
     finally:
         conn.close()
 
@@ -89,21 +90,29 @@ with st.sidebar:
 
     st.subheader("Base de données locale")
     if st.button("Mettre à jour les adresses", use_container_width=True):
-        with st.spinner("Téléchargement des adresses depuis le SITG..."):
-            try:
-                n = refresh_adresses_db(URL_INDICE_MOYENNES_3_ANS)
-                # Invalidate the address cache so the multiselect reloads
-                get_all_addresses.clear()
-                st.success(f"{n} adresses mises à jour.")
-            except Exception as e:
-                st.error(f"Erreur lors de la mise à jour : {e}")
+        status_text = st.empty()
+        progress_bar = st.progress(0.0)
+        try:
+            n = refresh_adresses_db(
+                URL_INDICE_MOYENNES_3_ANS,
+                progress_bar=progress_bar,
+                status_text=status_text,
+            )
+            # Invalidate the address cache so the multiselect reloads
+            get_all_addresses.clear()
+            progress_bar.empty()
+            status_text.empty()
+            st.success(f"{n:,} adresses chargées et enregistrées.")
+        except Exception as e:
+            progress_bar.empty()
+            status_text.empty()
+            st.error(f"Erreur lors de la mise à jour : {e}")
 
     st.divider()
     st.caption(
         "Les données proviennent de la base SCANE_INDICE_MOYENNES_3_ANS "
         "du SITG (Genève)."
     )
-
 
 # ---------------------------------------------------------------------------------------
 # Main content
@@ -206,8 +215,6 @@ with tab3:
             if st.checkbox("Afficher les données IDC"):
                 show_dataframe(data_df)
         else:
-            st.error(
-                "Pas de données disponibles pour le(s) EGID associé(s) à ce site."
-            )
+            st.error("Pas de données disponibles pour le(s) EGID associé(s) à ce site.")
     else:
         st.write("Pas d'adresse sélectionnée.")
