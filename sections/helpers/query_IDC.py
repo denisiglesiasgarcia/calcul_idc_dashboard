@@ -1,21 +1,35 @@
 # /sections/helpers/query_IDC.py
 
-import streamlit as st
-import requests
-import pandas as pd
-import numpy as np
-import logging
-from typing import List, Dict, Optional, Tuple, Union
-from pyproj import Transformer
-import pydeck as pdk
-import sqlite3
-import plotly.express as px
-from datetime import datetime
 import json
+import logging
+import sqlite3
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple, Union
+
+import numpy as np
+import plotly.express as px
+import polars as pl
+import pydeck as pdk
+import requests
+import streamlit as st
+from pyproj import Transformer
+
 from sections.helpers.save_excel_streamlit import display_dataframe_with_excel_download
 
-
 logging.basicConfig(level=logging.DEBUG)
+
+# Columns to keep from the API response, in display order
+RESULT_COLUMNS = [
+    "egid", "annee", "indice", "sre", "adresse", "npa", "commune",
+    "destination",
+    "agent_energetique_1", "quantite_agent_energetique_1", "unite_agent_energetique_1",
+    "agent_energetique_2", "quantite_agent_energetique_2", "unite_agent_energetique_2",
+    "agent_energetique_3", "quantite_agent_energetique_3", "unite_agent_energetique_3",
+    "date_debut_periode", "date_fin_periode", "date_saisie",
+    "indice_moy2", "annees_concernees_moy_2",
+    "indice_moy3", "annees_concernees_moy_3",
+    "id_concessionnaire", "nbre_preneur",
+]
 
 
 def make_request(
@@ -28,23 +42,15 @@ def make_request(
     egid: Union[int, List[int]],
 ) -> Optional[List[Dict]]:
     """
-    Make an API request to retrieve data for one or multiple EGIDs.
-    Args:
-        offset (int): The offset for the data to retrieve.
-        fields (str): The fields to include in the response.
-        url (str): The API endpoint URL.
-        chunk_size (int): The number of records to retrieve in each request.
-        table_name (str): The name of the table being processed.
-        geometry (bool): Whether to include geometry data in the response.
-        egid (Union[int, List[int]]): A single EGID or a list of EGIDs to query.
-    Returns:
-        Optional[List[Dict]]: A list of dictionaries containing the retrieved data, or None if an error occurred.
+    Query the SITG ArcGIS REST API for one or multiple EGIDs.
+
+    Returns a list of dicts (attributes + geometry if requested), or None on error.
+    Non-geometry path returns deduplicated records sorted by egid/annee.
     """
-    # Construct the where clause based on whether egid is a single value or a list
-    if isinstance(egid, list):
-        where_clause = f"egid IN ({','.join(map(str, egid))})"
-    else:
-        where_clause = f"egid={egid}"
+    where_clause = (
+        f"egid IN ({','.join(map(str, egid))})" if isinstance(egid, list)
+        else f"egid={egid}"
+    )
     params = {
         "where": where_clause,
         "outFields": fields,
@@ -53,141 +59,93 @@ def make_request(
         "resultOffset": offset,
         "resultRecordCount": chunk_size,
     }
+
     try:
         response = requests.get(url, params=params)
         response.raise_for_status()
         data = response.json()
-        if "features" in data:
-            data_df = data["features"]
-            if geometry:
-                result = [
-                    {"attributes": d["attributes"], "geometry": d["geometry"]}
-                    for d in data_df
-                ]
-                return result
-            else:
-                result = [d["attributes"] for d in data_df]
 
-                df = pd.DataFrame(result)
+        if "features" not in data:
+            logging.warning(f"{table_name} → 'features' not found at offset {offset}")
+            return None
 
-                df = df[
-                    [
-                        "egid",
-                        "annee",
-                        "indice",
-                        "sre",
-                        "adresse",
-                        "npa",
-                        "commune",
-                        "destination",
-                        "agent_energetique_1",
-                        "quantite_agent_energetique_1",
-                        "unite_agent_energetique_1",
-                        "agent_energetique_2",
-                        "quantite_agent_energetique_2",
-                        "unite_agent_energetique_2",
-                        "agent_energetique_3",
-                        "quantite_agent_energetique_3",
-                        "unite_agent_energetique_3",
-                        "date_debut_periode",
-                        "date_fin_periode",
-                        "date_saisie",
-                        "indice_moy2",
-                        "annees_concernees_moy_2",
-                        "indice_moy3",
-                        "annees_concernees_moy_3",
-                        "id_concessionnaire",
-                        "nbre_preneur",
-                    ]
-                ].sort_values(by=["egid", "annee"])
+        features = data["features"]
 
-                df["date_debut_periode"] = pd.to_datetime(
-                    df["date_debut_periode"], unit="ms"
-                )
-                df["date_fin_periode"] = pd.to_datetime(
-                    df["date_fin_periode"], unit="ms"
-                )
-                df["date_saisie"] = pd.to_datetime(df["date_saisie"], unit="ms")
+        if geometry:
+            return [
+                {"attributes": f["attributes"], "geometry": f["geometry"]}
+                for f in features
+            ]
 
-                df["npa"] = df["npa"].astype("int64")
-                df["quantite_agent_energetique_1"] = df[
-                    "quantite_agent_energetique_1"
-                ].astype("float64")
-                df["quantite_agent_energetique_2"] = df[
-                    "quantite_agent_energetique_2"
-                ].astype("float64")
-                df["quantite_agent_energetique_3"] = df[
-                    "quantite_agent_energetique_3"
-                ].astype("float64")
-
-                # for each pair of egid and annee, keep only the moste recent date_saisie
-                df = df.sort_values(
-                    by=["egid", "annee", "date_saisie"], ascending=[True, True, False]
-                )
-                df = df.drop_duplicates(subset=["egid", "annee"], keep="first")
-
-                # convert dataframe to list of dictionaries
-                filtered_list = df.to_dict("records")
-
-                return filtered_list
-        else:
-            logging.warning(
-                f"{table_name} → 'features' key not found in the API response for offset {offset}"
-            )
-    except requests.exceptions.RequestException as e:
-        logging.error(f"{table_name} → An error occurred with {offset}: {e}")
-    except json.JSONDecodeError:
-        logging.error(
-            f"{table_name} → An error occurred with {offset}, retrying later..."
+        # --- Non-geometry path: parse and clean with Polars ---
+        raw_records = [f["attributes"] for f in features]
+        df = (
+            pl.from_dicts(raw_records)
+            .select(RESULT_COLUMNS)
+            # Epoch ms → Datetime
+            .with_columns([
+                pl.col("date_debut_periode").cast(pl.Datetime("ms")),
+                pl.col("date_fin_periode").cast(pl.Datetime("ms")),
+                pl.col("date_saisie").cast(pl.Datetime("ms")),
+                pl.col("npa").cast(pl.Int64),
+                pl.col("quantite_agent_energetique_1").cast(pl.Float64),
+                pl.col("quantite_agent_energetique_2").cast(pl.Float64),
+                pl.col("quantite_agent_energetique_3").cast(pl.Float64),
+            ])
+            # Keep only the most recent saisie per (egid, annee)
+            .sort(["egid", "annee", "date_saisie"], descending=[False, False, True])
+            .unique(subset=["egid", "annee"], keep="first")
+            .sort(["egid", "annee"])
         )
+
+        return df.to_dicts()
+
+    except requests.exceptions.RequestException as e:
+        logging.error(f"{table_name} → Request error at offset {offset}: {e}")
+    except json.JSONDecodeError:
+        logging.error(f"{table_name} → JSON decode error at offset {offset}")
+
     return None
 
 
 @st.cache_data
-def convert_geometry_for_streamlit(data: List[Dict]) -> tuple:
+def convert_geometry_for_streamlit(data: List[Dict]) -> Tuple:
     """
-    Convert the geometry data from the Swiss LV95 system to WGS84 latitude and longitude,
-    create a GeoJSON feature collection, and calculate the centroid of all features.
+    Convert polygon rings from LV95 (EPSG:2056) to WGS84 (EPSG:4326).
+    Returns a GeoJSON FeatureCollection and the centroid [lon, lat].
     """
     transformer = Transformer.from_crs("EPSG:2056", "EPSG:4326", always_xy=True)
     features = []
     all_points = []
 
     for item in data:
-        if "geometry" in item and "rings" in item["geometry"]:
-            rings = item["geometry"]["rings"]
-            new_rings = []
-            for ring in rings:
-                new_ring = []
-                for point in ring:
-                    x, y = point[0], point[1]
-                    lon, lat = transformer.transform(x, y)
-                    new_ring.append([lon, lat])
-                    all_points.append([lon, lat])
-                new_rings.append(new_ring)
+        if "geometry" not in item or "rings" not in item["geometry"]:
+            continue
 
-            feature = {
-                "type": "Feature",
-                "geometry": {"type": "Polygon", "coordinates": new_rings},
-                "properties": item["attributes"],
-            }
-            features.append(feature)
+        new_rings = []
+        for ring in item["geometry"]["rings"]:
+            new_ring = []
+            for x, y in ring:
+                lon, lat = transformer.transform(x, y)
+                new_ring.append([lon, lat])
+                all_points.append([lon, lat])
+            new_rings.append(new_ring)
+
+        features.append({
+            "type": "Feature",
+            "geometry": {"type": "Polygon", "coordinates": new_rings},
+            "properties": item["attributes"],
+        })
 
     geojson = {"type": "FeatureCollection", "features": features}
-
-    # Calculate the centroid of all points
     centroid = np.mean(all_points, axis=0)
-
     return geojson, centroid
 
 
-@st.cache_data
+# NOTE: @st.cache_data removed — this function renders a Streamlit widget,
+# caching it has no effect and may cause widget identity issues.
 def show_map(data: List[Dict], centroid: Tuple[float, float]) -> None:
-    """
-    Display a map with the given data and centroid.
-    """
-
-    # Create a PyDeck layer
+    """Render a PyDeck GeoJSON map centred on the selected buildings."""
     layer = pdk.Layer(
         "GeoJsonLayer",
         data,
@@ -195,141 +153,87 @@ def show_map(data: List[Dict], centroid: Tuple[float, float]) -> None:
         stroked=False,
         filled=True,
         extruded=False,
-        wireframe=False,
-        get_elevation="properties.indice * 10",  # Adjust this multiplier as needed
         get_fill_color=[255, 0, 0, 200],
         get_line_color=[0, 0, 0],
         pickable=True,
         auto_highlight=True,
-        get_tooltip=["properties.egid", "properties.adresse"],
     )
-
-    # Set the initial view state using the calculated centroid
     view_state = pdk.ViewState(
-        latitude=centroid[1],  # Latitude
-        longitude=centroid[0],  # Longitude
-        zoom=17,  # You might need to adjust this depending on the scale of your data
+        latitude=centroid[1],
+        longitude=centroid[0],
+        zoom=17,
         pitch=45,
     )
-
-    # Create the deck
     deck = pdk.Deck(
         layers=[layer],
         initial_view_state=view_state,
         map_style="mapbox://styles/mapbox/light-v9",
         tooltip={
-            "html": "<b>EGID:</b> {egid}<br/><b>Adresse:</b> {adresse}<br/><b>SRE:</b> {sre} m",
+            "html": "<b>EGID:</b> {egid}<br/><b>Adresse:</b> {adresse}<br/><b>SRE:</b> {sre} m²",
             "style": {"backgroundColor": "steelblue", "color": "white"},
         },
     )
-
-    # Display the map in Streamlit
     st.pydeck_chart(deck)
 
 
-def show_dataframe(df):
-    df = pd.DataFrame(df)
+def show_dataframe(data: List[Dict]) -> None:
+    """Display IDC data table with Excel download.
 
-    df = df[
-        [
-            "egid",
-            "annee",
-            "indice",
-            "sre",
-            "adresse",
-            "npa",
-            "commune",
-            "destination",
-            "agent_energetique_1",
-            "quantite_agent_energetique_1",
-            "unite_agent_energetique_1",
-            "agent_energetique_2",
-            "quantite_agent_energetique_2",
-            "unite_agent_energetique_2",
-            "agent_energetique_3",
-            "quantite_agent_energetique_3",
-            "unite_agent_energetique_3",
-            "date_debut_periode",
-            "date_fin_periode",
-            "date_saisie",
-            "indice_moy2",
-            "annees_concernees_moy_2",
-            "indice_moy3",
-            "annees_concernees_moy_3",
-            "id_concessionnaire",
-            "nbre_preneur",
-        ]
-    ].sort_values(by=["egid", "annee"])
-
-    display_dataframe_with_excel_download(df)
+    Columns are already selected and sorted by make_request — no need to reprocess.
+    """
+    df = pl.from_dicts(data)
+    # display_dataframe_with_excel_download expects a pandas DataFrame
+    display_dataframe_with_excel_download(df.to_pandas())
 
 
 @st.cache_data
-def get_adresses_egid():
+def get_adresses_egid() -> pl.DataFrame:
+    """Load all address/EGID pairs from the local SQLite database."""
     conn = sqlite3.connect("adresses_egid.db")
-    # c = conn.cursor()
-    df_adresses_egid = pd.read_sql_query(
-        "SELECT * FROM adresses_egid ORDER BY adresse", conn
-    )
-    conn.commit()
-    conn.close()
-    return df_adresses_egid
+    try:
+        return pl.read_database(
+            "SELECT * FROM adresses_egid ORDER BY adresse", conn
+        )
+    finally:
+        conn.close()
 
 
 @st.cache_data
-def create_barplot(data_df, nom_projet):
-    # Create DataFrame and sort values
-    df_barplot = pd.DataFrame(data_df)
-    df_barplot = df_barplot[["adresse", "egid", "annee", "indice"]].sort_values(
-        by=["annee", "adresse", "egid"]
-    )
+def create_barplot(data_df: List[Dict], nom_projet: str) -> None:
+    """
+    Render a grouped bar chart of IDC by year and address.
 
-    # Fill in missing years with zero values
+    Missing years are filled with 0 using a cross-join on the full year range,
+    avoiding nested loops.
+    """
+    df = pl.from_dicts(data_df).select(["adresse", "egid", "annee", "indice"])
+
     current_year = datetime.now().year
-    years = list(range(2011, current_year + 1))
-    adresses_egid = df_barplot[["adresse", "egid"]].drop_duplicates().values.tolist()
+    years_df = pl.DataFrame({"annee": list(range(2011, current_year + 1))})
 
-    # Create missing rows
-    new_rows = []
-    for adresse, egid in adresses_egid:
-        for year in years:
-            if (
-                year
-                not in df_barplot[
-                    (df_barplot["adresse"] == adresse) & (df_barplot["egid"] == egid)
-                ]["annee"].unique()
-            ):
-                new_rows.append(
-                    {"adresse": adresse, "egid": egid, "annee": year, "indice": 0}
-                )
-
-    # Add new rows if any exist
-    if new_rows:
-        df_new_rows = pd.DataFrame(new_rows)
-        df_barplot = pd.concat([df_barplot, df_new_rows], ignore_index=True)
-
-    # Sort and create legend labels
-    df_barplot = df_barplot.sort_values(by=["annee", "adresse", "egid"])
-    df_barplot["adresse_egid"] = df_barplot.apply(
-        lambda row: f"{row['adresse']} - {row['egid']}", axis=1
+    # Cross-join all address/egid pairs with all years, then fill gaps
+    df_full = (
+        df.select(["adresse", "egid"]).unique()
+        .join(years_df, how="cross")
+        .join(df, on=["adresse", "egid", "annee"], how="left")
+        .with_columns(pl.col("indice").fill_null(0))
+        .sort(["annee", "adresse", "egid"])
+        .with_columns([
+            (pl.col("adresse") + " - " + pl.col("egid").cast(pl.Utf8)).alias("adresse_egid"),
+            pl.when(pl.col("indice") > 0)
+              .then(pl.col("indice").cast(pl.Utf8))
+              .otherwise(pl.lit(""))
+              .alias("text"),
+        ])
     )
 
-    # Create conditional text for bar values
-    df_barplot["text"] = df_barplot["indice"].apply(
-        lambda x: f"{int(x)}" if x > 0 else ""
-    )
+    # Compute right margin based on longest legend label
+    longest_label = df_full["adresse_egid"].str.len_chars().max()
+    right_margin = longest_label * 8 + 25
 
-    # Calculate approximate legend width based on longest text
-    longest_legend = max(df_barplot["adresse_egid"].str.len())
-    # Approximate pixels per character (adjust this value based on your font size)
-    pixels_per_char = 8
-    legend_width = longest_legend * pixels_per_char
-    # Calculate right margin with some padding
-    right_margin = legend_width + 25
-
-    # Create bar plot
+    # Plotly Express works directly with Polars DataFrames (v0.8+)
     fig = px.bar(
-        df_barplot,
+        df_full,
         x="annee",
         y="indice",
         color="adresse_egid",
@@ -340,16 +244,11 @@ def create_barplot(data_df, nom_projet):
         height=400,
     )
 
-    # Configure text display
     fig.update_traces(textposition="outside", texttemplate="%{text}", cliponaxis=False)
-
-    # Update layout settings
     fig.update_layout(
-        # Axis titles
         xaxis_title="Année",
         yaxis_title="Indice [MJ/m²]",
         legend_title="Adresse - EGID",
-        # X-axis settings
         xaxis={
             "type": "category",
             "tickangle": 0,
@@ -357,37 +256,25 @@ def create_barplot(data_df, nom_projet):
             "gridwidth": 0.1,
             "tickfont": {"size": 12},
         },
-        # Y-axis settings
         yaxis={
-            "range": [0, max(df_barplot["indice"]) * 1.15],
+            "range": [0, df_full["indice"].max() * 1.15],
             "gridcolor": "rgba(211, 211, 211, 0.2)",
             "gridwidth": 0.1,
             "tickfont": {"size": 12},
         },
-        # Margins
-        margin=dict(t=50, r=right_margin, b=50, l=50),  # top  # right  # bottom  # left
-        # Legend settings
+        margin=dict(t=50, r=right_margin, b=50, l=50),
         legend=dict(
-            yanchor="top",
-            y=1,
-            xanchor="left",
-            x=1,
+            yanchor="top", y=1, xanchor="left", x=1,
             bgcolor="rgba(255, 255, 255, 0.8)",
-            bordercolor="Black",
             borderwidth=0,
         ),
-        # Background colors
         plot_bgcolor="white",
         paper_bgcolor="white",
-        # Disable autosize
         autosize=False,
-        # Font settings
         font=dict(size=12, family="Arial", color="black"),
-        # Title settings
         title={"y": 0.95, "x": 0.5, "xanchor": "center", "yanchor": "top"},
     )
 
-    # Display plot in Streamlit
     st.plotly_chart(
         fig,
         use_container_width=False,
@@ -402,133 +289,8 @@ def create_barplot(data_df, nom_projet):
             "displayModeBar": True,
             "displaylogo": False,
             "modeBarButtonsToRemove": [
-                "zoom2d",
-                "pan2d",
-                "select2d",
-                "lasso2d",
-                "zoomIn2d",
-                "zoomOut2d",
-                "autoScale2d",
-                "resetScale2d",
+                "zoom2d", "pan2d", "select2d", "lasso2d",
+                "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d",
             ],
         },
     )
-
-
-def get_addresses_and_egids(url: str, db_path: str = "addresses_egid.db") -> None:
-    """
-    Retrieve all unique address-EGID pairs from the API and save to SQLite database.
-
-    Args:
-        url (str): The API endpoint URL.
-        db_path (str): Path to the SQLite database file.
-    """
-    # Setup logging
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.INFO)
-
-    # Create database connection
-    conn = sqlite3.connect(db_path)
-    logger.info(f"Connected to database: {db_path}")
-
-    # Create table if it doesn't exist
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS addresses (
-            egid INTEGER,
-            address TEXT,
-            updated_at TIMESTAMP,
-            PRIMARY KEY (egid, address)
-        )
-    """
-    )
-    logger.info("Database table checked/created")
-
-    offset = 0
-    chunk_size = 1000
-    total_saved = 0
-
-    # Make an initial request to get the total count
-    params = {
-        "where": "1=1",
-        "outFields": "adresse,egid",
-        "returnGeometry": "false",
-        "f": "json",
-        "resultRecordCount": 1,
-    }
-
-    try:
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        data = response.json()
-        total_count = data.get("properties", {}).get("total", 0)
-        logger.info(f"Total records to process: {total_count}")
-
-        while True:
-            params = {
-                "where": "1=1",
-                "outFields": "adresse,egid",
-                "returnGeometry": "false",
-                "f": "json",
-                "resultOffset": offset,
-                "resultRecordCount": chunk_size,
-            }
-
-            try:
-                response = requests.get(url, params=params)
-                response.raise_for_status()
-                data = response.json()
-
-                if "features" not in data or not data["features"]:
-                    logger.info("No more data to fetch")
-                    break
-
-                # Prepare data for database
-                now = datetime.now().isoformat()
-                records = [
-                    (
-                        feature["attributes"]["egid"],
-                        feature["attributes"]["adresse"],
-                        now,
-                    )
-                    for feature in data["features"]
-                    if feature["attributes"]["adresse"]
-                    and feature["attributes"]["egid"]
-                ]
-
-                # Insert data into database
-                conn.executemany(
-                    """
-                    INSERT OR REPLACE INTO addresses (egid, address, updated_at)
-                    VALUES (?, ?, ?)
-                    """,
-                    records,
-                )
-                conn.commit()
-
-                total_saved += len(records)
-                logger.info(
-                    f"Processed {offset + len(records)} records out of {total_count}"
-                )
-
-                records_fetched = len(data["features"])
-                if records_fetched < chunk_size:
-                    logger.info(
-                        f"Finished processing. Total records saved: {total_saved}"
-                    )
-                    break
-
-                offset += chunk_size
-
-            except requests.exceptions.RequestException as e:
-                logger.error(f"Error fetching data at offset {offset}: {e}")
-                break
-            except json.JSONDecodeError:
-                logger.error(f"JSON decode error at offset {offset}")
-                break
-
-    except Exception as e:
-        logger.error(f"Error during execution: {e}")
-    finally:
-        conn.close()
-        logger.info("Database connection closed")
