@@ -94,11 +94,16 @@ def get_all_addresses(db_path: str = "adresses_egid.db") -> pd.DataFrame:
 # ---------------------------------------------------------------------------------------
 # Define the default tabs
 tabs = [
-    "Calculer un IDC",
-    "Note de calcul IDC",
     "Analyse historique IDC",
 ]
-tab1, tab2, tab3 = st.tabs(tabs)
+tab3 = st.tabs(tabs)
+
+# tabs = [
+#     "Calculer un IDC",
+#     "Note de calcul IDC",
+#     "Analyse historique IDC",
+# ]
+# tab1, tab2, tab3 = st.tabs(tabs)
 
 # Initialize all form values at the beginning of your script
 def initialize_data_site():
