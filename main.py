@@ -14,34 +14,6 @@ from sections.helpers.query_IDC import (
     create_barplot,
 )
 
-from sections.helpers.calcul_dj import (
-    get_meteo_data,
-)
-
-from sections.helpers.affectations_idc_sre import (
-    display_affectations_idc,
-    AFFECTATION_OPTIONS
-)
-
-from sections.helpers.agents_energetiques_idc import (
-    display_agents_energetiques_idc,
-    OPTIONS_AGENT_ENERGETIQUE_IDC,
-    OPTIONS_AGENT_ENERGETIQUE_IDC_ECS
-)
-
-from sections.helpers.note_calcul.remarques_idc import (
-    remarques_note_calcul_idc
-)
-
-from sections.helpers.note_calcul_idc_main import (
-    fonction_note_calcul_idc_dataframe,
-    fonction_note_calcul_idc,
-)
-
-from sections.helpers.resultats_idc import (
-    show_results_idc
-)
-
 # streamlit wide mode
 st.set_page_config(
     layout="wide",
@@ -59,13 +31,6 @@ st.set_page_config(
 # IDC query
 FIELDS = "*"
 URL_INDICE_MOYENNES_3_ANS = "https://vector.sitg.ge.ch/arcgis/rest/services/Hosted/SCANE_INDICE_MOYENNES_3_ANS/FeatureServer/0/query"
-
-# Mise à jour météo
-last_update_time_meteo = datetime.datetime(2021, 1, 1)
-now = datetime.datetime.now()
-if (now - last_update_time_meteo).days > 1:
-    last_update_time_meteo = now
-    st.session_state["df_meteo_tre200d0"] = get_meteo_data()
 
 @st.cache_data
 def get_all_addresses(db_path: str = "adresses_egid.db") -> pd.DataFrame:
