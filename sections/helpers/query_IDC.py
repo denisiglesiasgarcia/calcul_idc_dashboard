@@ -6,6 +6,7 @@ import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+import time
 from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -589,7 +590,7 @@ def refresh_adresses_db(
     url: str,
     db_path: str = "adresses_egid.db",
     chunk_size: int = 2000,
-    max_workers: int = 8,
+    max_workers: int = 3,
     progress_bar=None,
     status_text=None,
 ) -> int:
@@ -599,24 +600,22 @@ def refresh_adresses_db(
 
     Performance strategy:
       - Fetch total count first, then compute all page offsets upfront.
-      - Fetch all pages in parallel via ThreadPoolExecutor (default 8 workers).
-      - Collect every record in memory, deduplicate with Polars, then do a
-        single bulk INSERT — one transaction, no per-page commits.
-      - chunk_size raised to 2000 (ArcGIS FeatureServer max) to halve the
-        number of HTTP requests compared to 1000.
+      - Fetch pages in parallel via ThreadPoolExecutor (3 workers — SITG throttles
+        aggressively above ~4 concurrent connections).
+      - Each page retries up to 4 times with exponential backoff on timeout/error.
+      - Collect all records in memory, deduplicate with Polars, then do a
+        single bulk INSERT in one transaction.
 
     Args:
-        url:          SITG API endpoint (same URL used for IDC queries).
+        url:          SITG API endpoint.
         db_path:      Path to the local SQLite database.
         chunk_size:   Records per API page (max 2000 for ArcGIS hosted services).
-        max_workers:  Parallel HTTP threads. 8 is a safe ceiling for a public API.
+        max_workers:  Parallel HTTP threads. Keep at 3 to stay under SITG rate limit.
         progress_bar: Optional st.progress placeholder for visual feedback.
         status_text:  Optional st.empty placeholder for status messages.
 
     Returns the total number of unique records saved.
-    Cache invalidation is handled by the caller (get_all_addresses.clear()).
     """
-
     def _status(msg: str) -> None:
         if status_text is not None:
             status_text.caption(msg)
@@ -626,52 +625,65 @@ def refresh_adresses_db(
         if progress_bar is not None:
             progress_bar.progress(value)
 
-    # --- Step 1: total count so we can pre-compute all offsets ---
+    # --- Step 1: total count ---
     _status("Connexion au SITG — récupération du nombre total d'adresses...")
     _progress(0.0)
 
     try:
         resp = requests.get(
-            url, params={"where": "1=1", "returnCountOnly": "true", "f": "json"}
+            url,
+            params={"where": "1=1", "returnCountOnly": "true", "f": "json"},
+            timeout=30,
         )
         resp.raise_for_status()
         total_count = resp.json().get("count", 0)
     except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
-        logging.warning(f"refresh_adresses_db → count request failed: {e}")
-        total_count = 0
+        raise RuntimeError(f"Impossible de récupérer le nombre total d'adresses: {e}") from e
 
-    if total_count == 0:
-        raise RuntimeError(
-            "Impossible de récupérer le nombre total d'adresses depuis le SITG."
-        )
+    _status(f"{total_count:,} adresses trouvées — téléchargement en parallèle ({max_workers} workers)...")
 
-    _status(f"{total_count:,} adresses trouvées — téléchargement en parallèle...")
-
-    # Pre-compute every page offset so futures can be dispatched all at once
     offsets = list(range(0, total_count, chunk_size))
     completed_pages = 0
     lock = threading.Lock()
     all_records: list[tuple] = []
 
-    # --- Step 2: fetch all pages in parallel ---
+    # --- Step 2: fetch pages in parallel with retry/backoff ---
     def fetch_page(offset: int) -> list[tuple]:
-        """Fetch one page and return list of (egid, adresse) tuples."""
-        params = {
-            "where": "1=1",
-            "outFields": "adresse,egid",
-            "returnGeometry": "false",
-            "f": "json",
-            "resultOffset": offset,
-            "resultRecordCount": chunk_size,
-        }
-        response = requests.get(url, params=params, timeout=30)
-        response.raise_for_status()
-        features = response.json().get("features", [])
-        return [
-            (f["attributes"]["egid"], f["attributes"]["adresse"])
-            for f in features
-            if f["attributes"].get("egid") and f["attributes"].get("adresse")
-        ]
+        """
+        Fetch one page with up to 4 retries and exponential backoff.
+        Backoff: 2s, 4s, 8s, 16s — gives the API time to recover after throttling.
+        """
+        max_retries = 4
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(
+                    url,
+                    params={
+                        "where": "1=1",
+                        "outFields": "adresse,egid",
+                        "returnGeometry": "false",
+                        "f": "json",
+                        "resultOffset": offset,
+                        "resultRecordCount": chunk_size,
+                    },
+                    timeout=60,  # generous timeout — SITG can be slow under load
+                )
+                response.raise_for_status()
+                features = response.json().get("features", [])
+                return [
+                    (f["attributes"]["egid"], f["attributes"]["adresse"])
+                    for f in features
+                    if f["attributes"].get("egid") and f["attributes"].get("adresse")
+                ]
+            except requests.exceptions.RequestException as e:
+                if attempt == max_retries - 1:
+                    raise
+                wait = 2 ** (attempt + 1)  # 2, 4, 8, 16 seconds
+                logging.warning(
+                    f"fetch_page offset={offset} attempt {attempt + 1}/{max_retries} "
+                    f"failed ({e}), retrying in {wait}s..."
+                )
+                time.sleep(wait)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(fetch_page, off): off for off in offsets}
@@ -680,9 +692,7 @@ def refresh_adresses_db(
             try:
                 records = future.result()
             except Exception as e:
-                raise RuntimeError(
-                    f"Échec du téléchargement à l'offset {offset}: {e}"
-                ) from e
+                raise RuntimeError(f"Échec du téléchargement à l'offset {offset}: {e}") from e
 
             with lock:
                 all_records.extend(records)
@@ -694,22 +704,16 @@ def refresh_adresses_db(
                     f"({progress_value * 100:.0f}%)"
                 )
 
-    # --- Step 3: deduplicate with Polars before touching the DB ---
+    # --- Step 3: deduplicate with Polars ---
     _status("Dédoublonnage et écriture en base...")
     df = (
-        pl.DataFrame(
-            {
-                "egid": [r[0] for r in all_records],
-                "adresse": [r[1] for r in all_records],
-            }
-        )
-        .unique()  # removes any cross-page duplicates the API may return
+        pl.DataFrame({"egid": [r[0] for r in all_records], "adresse": [r[1] for r in all_records]})
+        .unique()
         .sort("adresse")
     )
-    unique_records = df.rows()  # list of (egid, adresse) tuples
+    unique_records = df.rows()
 
     # --- Step 4: rebuild table and bulk insert in one transaction ---
-    # DROP + CREATE guarantees the PRIMARY KEY constraint is always present.
     conn = sqlite3.connect(db_path)
     conn.execute("DROP TABLE IF EXISTS adresses_egid")
     conn.execute("""
@@ -719,7 +723,6 @@ def refresh_adresses_db(
             PRIMARY KEY (egid, adresse)
         )
     """)
-    # Index on adresse speeds up ORDER BY in get_all_addresses()
     conn.execute("CREATE INDEX idx_adresse ON adresses_egid (adresse)")
     conn.execute("BEGIN")
     conn.executemany(
