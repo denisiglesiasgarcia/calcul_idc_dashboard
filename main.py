@@ -10,6 +10,7 @@ from sections.helpers.query_IDC import (
     convert_geometry_for_streamlit,
     create_barplot,
     fetch_idc_data,
+    refresh_adresses_db,
     show_dataframe,
     show_kpis,
     show_map,
@@ -83,6 +84,19 @@ with st.sidebar:
         value=(2011, CURRENT_YEAR),
         step=1,
     )
+
+    st.divider()
+
+    st.subheader("Base de données locale")
+    if st.button("Mettre à jour les adresses", use_container_width=True):
+        with st.spinner("Téléchargement des adresses depuis le SITG..."):
+            try:
+                n = refresh_adresses_db(URL_INDICE_MOYENNES_3_ANS)
+                # Invalidate the address cache so the multiselect reloads
+                get_all_addresses.clear()
+                st.success(f"{n} adresses mises à jour.")
+            except Exception as e:
+                st.error(f"Erreur lors de la mise à jour : {e}")
 
     st.divider()
     st.caption(
