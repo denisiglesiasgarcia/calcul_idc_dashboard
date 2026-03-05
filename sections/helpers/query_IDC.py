@@ -239,6 +239,7 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
         idc_current = df_latest["indice"].mean()
         idc_moy3_series = df_latest["indice_moy3"].drop_nulls()
         idc_moy3 = idc_moy3_series.mean() if len(idc_moy3_series) > 0 else None
+        idc_moy3_years = df_latest["annees_concernees_moy_3"].drop_nulls().to_list()
 
     delta_abs = idc_current - seuil
 
@@ -246,7 +247,7 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
 
     with col1:
         st.metric(
-            label=f"IDC {latest_year}",
+            label=f"Dernier IDC ({latest_year})",
             value=f"{idc_current:.0f} MJ/m²",
             delta=f"{delta_abs:+.0f} MJ/m² vs seuil",
             # red when above threshold (inverse: positive delta = bad)
@@ -254,7 +255,7 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
         )
     with col2:
         st.metric(
-            label="Moyenne 3 ans",
+            label=f"Moyenne 3 ans ({', '.join(idc_moy3_years) if idc_moy3_years else 'N/A'})",
             value=f"{idc_moy3:.0f} MJ/m²" if idc_moy3 is not None else "N/A",
             help="Valeur indice_moy3 issue de la base SITG, pondérée par SRE.",
         )
