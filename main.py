@@ -179,9 +179,9 @@ with tab3:
         st.warning("Sélectionner au moins une adresse pour continuer.")
 
     # ---------------------------------------------------------------------------------------
-    st.subheader("Plan de situation")
-
     if selected_options and len(st.session_state.get("data_verif_idc", [])) > 0:
+        st.subheader("Plan de situation")
+
         egids = st.session_state["data_verif_idc"]["egid"].to_list()
 
         # ------------------------------------------------------------------
