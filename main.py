@@ -106,11 +106,10 @@ with tab3:
         <style>
         span[data-baseweb="tag"] {
             max-width: none !important;
-            white-space: normal !important;
         }
         span[data-baseweb="tag"] span {
             overflow: visible !important;
-            white-space: normal !important;
+            white-space: nowrap !important;
             text-overflow: unset !important;
         }
         </style>
