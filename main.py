@@ -1,20 +1,20 @@
 # /main.py
 
 import os
-import pandas as pd
-import polars as pl
-import streamlit as st
 import sqlite3
 
+import polars as pl
+import streamlit as st
+
 from sections.helpers.query_IDC import (
-    make_request,
     convert_geometry_for_streamlit,
-    show_map,
-    show_dataframe,
     create_barplot,
+    fetch_idc_data,
+    show_dataframe,
+    show_kpis,
+    show_map,
 )
 
-# streamlit wide mode
 st.set_page_config(
     layout="wide",
     page_title="Outil de calcul de l'IDC",
@@ -23,14 +23,19 @@ st.set_page_config(
     menu_items={
         "Get Help": "https://www.streamlit.io/community",
         "Report a bug": "https://github.com/yourusername/yourrepo/issues",
-        "About": "# My Dashboard\nCreated with Streamlit."
-    }
+        "About": "# My Dashboard\nCreated with Streamlit.",
+    },
 )
 
 # ---------------------------------------------------------------------------------------
-# IDC query
 FIELDS = "*"
-URL_INDICE_MOYENNES_3_ANS = "https://vector.sitg.ge.ch/arcgis/rest/services/Hosted/SCANE_INDICE_MOYENNES_3_ANS/FeatureServer/0/query"
+URL_INDICE_MOYENNES_3_ANS = (
+    "https://vector.sitg.ge.ch/arcgis/rest/services/Hosted/"
+    "SCANE_INDICE_MOYENNES_3_ANS/FeatureServer/0/query"
+)
+
+CURRENT_YEAR = 2025  # upper bound for year range slider
+
 
 @st.cache_data
 def get_all_addresses(db_path: str = "adresses_egid.db") -> pl.DataFrame:
@@ -44,18 +49,52 @@ def get_all_addresses(db_path: str = "adresses_egid.db") -> pl.DataFrame:
         )
     except Exception as e:
         print(f"Error in get_all_addresses: {e}")
-        return pl.DataFrame({"adresse": pl.Series([], dtype=pl.Utf8), "egid": pl.Series([], dtype=pl.Utf8)})
+        return pl.DataFrame({
+            "adresse": pl.Series([], dtype=pl.Utf8),
+            "egid": pl.Series([], dtype=pl.Utf8),
+        })
     finally:
         conn.close()
 
-# ---------------------------------------------------------------------------------------
-# Define the default tabs
-tabs = [
-    "Analyse historique IDC",
-]
-(tab3,) = st.tabs(tabs)  # unpack the single-element tuple
 
 # ---------------------------------------------------------------------------------------
+# Sidebar — analysis parameters
+# ---------------------------------------------------------------------------------------
+with st.sidebar:
+    st.header("Paramètres d'analyse")
+
+    seuil = st.number_input(
+        label="Seuil IDC de référence [MJ/m²]",
+        min_value=0,
+        max_value=2000,
+        value=450,
+        step=10,
+        help=(
+            "Seuil indicatif pour l'évaluation de la conformité énergétique. "
+            "Valeur typique pour bâtiment résidentiel à Genève : 450 MJ/m²."
+        ),
+    )
+
+    year_range = st.slider(
+        label="Période d'analyse",
+        min_value=2011,
+        max_value=CURRENT_YEAR,
+        value=(2011, CURRENT_YEAR),
+        step=1,
+    )
+
+    st.divider()
+    st.caption(
+        "Les données proviennent de la base SCANE_INDICE_MOYENNES_3_ANS "
+        "du SITG (Genève)."
+    )
+
+
+# ---------------------------------------------------------------------------------------
+# Main content
+# ---------------------------------------------------------------------------------------
+(tab3,) = st.tabs(["Analyse historique IDC"])
+
 with tab3:
     st.subheader("Sélection adresse")
 
@@ -82,14 +121,11 @@ with tab3:
     )
 
     if selected_options:
-        st.write(f"{len(selected_options)} adresse(s) sélectionnée:")
-
+        st.write(f"{len(selected_options)} adresse(s) sélectionnée(s)")
         selected_rows = [options_map[opt] for opt in selected_options]
-        # Store as Polars DataFrame
         st.session_state["data_verif_idc"] = pl.DataFrame(selected_rows)
     else:
         st.warning("Sélectionner au moins une adresse pour continuer.")
-
 
     # ---------------------------------------------------------------------------------------
     st.subheader("Plan de situation")
@@ -97,28 +133,44 @@ with tab3:
     if selected_options and len(st.session_state.get("data_verif_idc", [])) > 0:
         egids = st.session_state["data_verif_idc"]["egid"].to_list()
 
-        data_geometry = make_request(
-            0, FIELDS, URL_INDICE_MOYENNES_3_ANS, 1000,
-            "SCANE_INDICE_MOYENNES_3_ANS", True, egids,
-        )
-        data_df = make_request(
-            0, FIELDS, URL_INDICE_MOYENNES_3_ANS, 1000,
-            "SCANE_INDICE_MOYENNES_3_ANS", False, egids,
-        )
+        # ------------------------------------------------------------------
+        # API cache in session_state — avoids re-fetching when the user only
+        # toggles a checkbox or adjusts a sidebar parameter.
+        # The cache is invalidated whenever the selected EGID set changes.
+        # ------------------------------------------------------------------
+        cache_key = tuple(sorted(egids))
+        if st.session_state.get("_api_cache_key") != cache_key:
+            with st.spinner("Chargement des données SITG..."):
+                data_geometry, data_df = fetch_idc_data(
+                    egids, URL_INDICE_MOYENNES_3_ANS
+                )
+            st.session_state["_api_cache_key"] = cache_key
+            st.session_state["_api_geometry"] = data_geometry
+            st.session_state["_api_df"] = data_df
+        else:
+            data_geometry = st.session_state["_api_geometry"]
+            data_df = st.session_state["_api_df"]
 
         if data_geometry and data_df:
             if st.checkbox("Afficher la carte"):
                 geojson_data, centroid = convert_geometry_for_streamlit(data_geometry)
                 show_map(geojson_data, centroid)
 
+            # KPI row
+            st.subheader("Indicateurs clés")
+            show_kpis(data_df, seuil=seuil)
+
+            # Historical bar chart
             st.subheader("Historique IDC")
             adresses_titre = st.session_state["data_verif_idc"]["adresse"].to_list()
             title = ", ".join(adresses_titre)
-            create_barplot(data_df, title)
+            create_barplot(data_df, title, seuil=seuil, year_range=year_range)
 
             if st.checkbox("Afficher les données IDC"):
                 show_dataframe(data_df)
         else:
-            st.error("Pas de données disponibles pour le(s) EGID associé(s) à ce site.")
+            st.error(
+                "Pas de données disponibles pour le(s) EGID associé(s) à ce site."
+            )
     else:
         st.write("Pas d'adresse sélectionnée.")

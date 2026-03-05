@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import plotly.express as px
+import plotly.graph_objects as go
 import polars as pl
 import pydeck as pdk
 import requests
@@ -32,20 +33,23 @@ RESULT_COLUMNS = [
 ]
 
 
-def make_request(
-    offset: int,
-    fields: str,
-    url: str,
-    chunk_size: int,
-    table_name: str,
-    geometry: bool,
+def fetch_idc_data(
     egid: Union[int, List[int]],
-) -> Optional[List[Dict]]:
+    url: str,
+    fields: str = "*",
+    chunk_size: int = 1000,
+    table_name: str = "SCANE_INDICE_MOYENNES_3_ANS",
+) -> Tuple[Optional[List[Dict]], Optional[List[Dict]]]:
     """
-    Query the SITG ArcGIS REST API for one or multiple EGIDs.
+    Single API call replacing the previous two separate make_request() calls.
 
-    Returns a list of dicts (attributes + geometry if requested), or None on error.
-    Non-geometry path returns deduplicated records sorted by egid/annee.
+    Fetches with returnGeometry=true so both geometry and tabular data
+    are retrieved in one round-trip, then splits the result.
+
+    Returns:
+        (geometry_records, data_records) — both None on error.
+        geometry_records: list of {attributes, geometry} dicts for show_map.
+        data_records:     cleaned, deduplicated attribute dicts for charts/tables.
     """
     where_clause = (
         f"egid IN ({','.join(map(str, egid))})" if isinstance(egid, list)
@@ -54,9 +58,9 @@ def make_request(
     params = {
         "where": where_clause,
         "outFields": fields,
-        "returnGeometry": str(geometry).lower(),
+        "returnGeometry": "true",
         "f": "json",
-        "resultOffset": offset,
+        "resultOffset": 0,
         "resultRecordCount": chunk_size,
     }
 
@@ -66,23 +70,22 @@ def make_request(
         data = response.json()
 
         if "features" not in data:
-            logging.warning(f"{table_name} → 'features' not found at offset {offset}")
-            return None
+            logging.warning(f"{table_name} → 'features' not found in response")
+            return None, None
 
         features = data["features"]
 
-        if geometry:
-            return [
-                {"attributes": f["attributes"], "geometry": f["geometry"]}
-                for f in features
-            ]
+        # Geometry records: keep raw attributes + geometry for show_map
+        geometry_records = [
+            {"attributes": f["attributes"], "geometry": f["geometry"]}
+            for f in features
+        ]
 
-        # --- Non-geometry path: parse and clean with Polars ---
+        # Tabular records: clean and deduplicate with Polars
         raw_records = [f["attributes"] for f in features]
         df = (
             pl.from_dicts(raw_records)
             .select(RESULT_COLUMNS)
-            # Epoch ms → Datetime
             .with_columns([
                 pl.col("date_debut_periode").cast(pl.Datetime("ms")),
                 pl.col("date_fin_periode").cast(pl.Datetime("ms")),
@@ -98,16 +101,33 @@ def make_request(
             .sort(["egid", "annee"])
         )
 
-        return df.to_dicts()
+        return geometry_records, df.to_dicts()
 
     except requests.exceptions.RequestException as e:
-        logging.error(f"{table_name} → Request error at offset {offset}: {e}")
+        logging.error(f"{table_name} → Request error: {e}")
     except json.JSONDecodeError:
-        logging.error(f"{table_name} → JSON decode error at offset {offset}")
+        logging.error(f"{table_name} → JSON decode error")
 
-    return None
+    return None, None
 
 
+# ---------------------------------------------------------------------------
+# Backward-compatible wrapper — kept for any other callers in the project
+def make_request(
+    offset: int,
+    fields: str,
+    url: str,
+    chunk_size: int,
+    table_name: str,
+    geometry: bool,
+    egid: Union[int, List[int]],
+) -> Optional[List[Dict]]:
+    """Legacy wrapper around fetch_idc_data(). Prefer fetch_idc_data() for new code."""
+    geo, data = fetch_idc_data(egid, url, fields, chunk_size, table_name)
+    return geo if geometry else data
+
+
+# ---------------------------------------------------------------------------
 @st.cache_data
 def convert_geometry_for_streamlit(data: List[Dict]) -> Tuple:
     """
@@ -142,8 +162,7 @@ def convert_geometry_for_streamlit(data: List[Dict]) -> Tuple:
     return geojson, centroid
 
 
-# NOTE: @st.cache_data removed — this function renders a Streamlit widget,
-# caching it has no effect and may cause widget identity issues.
+# NOTE: @st.cache_data intentionally omitted — renders a Streamlit widget
 def show_map(data: List[Dict], centroid: Tuple[float, float]) -> None:
     """Render a PyDeck GeoJSON map centred on the selected buildings."""
     layer = pdk.Layer(
@@ -178,73 +197,196 @@ def show_map(data: List[Dict], centroid: Tuple[float, float]) -> None:
 
 def show_dataframe(data: List[Dict]) -> None:
     """Display IDC data table with Excel download.
-
-    Columns are already selected and sorted by make_request — no need to reprocess.
+    Columns are already ordered and deduplicated by fetch_idc_data().
     """
     df = pl.from_dicts(data)
-    # display_dataframe_with_excel_download expects a pandas DataFrame
     display_dataframe_with_excel_download(df.to_pandas())
 
 
-@st.cache_data
-def get_adresses_egid() -> pl.DataFrame:
-    """Load all address/EGID pairs from the local SQLite database."""
-    conn = sqlite3.connect("adresses_egid.db")
-    try:
-        return pl.read_database(
-            "SELECT * FROM adresses_egid ORDER BY adresse", conn
+def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
+    """
+    Display four KPI metrics above the chart:
+      - Latest year IDC (SRE-weighted across all selected buildings)
+      - 3-year rolling average (from API field indice_moy3, SRE-weighted)
+      - Reference threshold (configurable via sidebar)
+      - Compliance status
+
+    SRE weighting ensures larger buildings are not treated equally to smaller
+    ones when multiple EGIDs are selected.
+    """
+    df = pl.from_dicts(data_df).with_columns([
+        pl.col("sre").cast(pl.Float64),
+        pl.col("indice").cast(pl.Float64),
+        pl.col("indice_moy3").cast(pl.Float64),
+    ])
+
+    latest_year = df["annee"].max()
+    df_latest = df.filter(pl.col("annee") == latest_year)
+
+    total_sre = df_latest["sre"].sum()
+
+    if total_sre and total_sre > 0:
+        idc_current = (df_latest["indice"] * df_latest["sre"]).sum() / total_sre
+
+        df_moy3 = df_latest.filter(pl.col("indice_moy3").is_not_null())
+        sre_moy3 = df_moy3["sre"].sum()
+        idc_moy3 = (
+            (df_moy3["indice_moy3"] * df_moy3["sre"]).sum() / sre_moy3
+            if sre_moy3 and sre_moy3 > 0 else None
         )
-    finally:
-        conn.close()
+    else:
+        # Fallback to simple mean when SRE is missing
+        idc_current = df_latest["indice"].mean()
+        idc_moy3_series = df_latest["indice_moy3"].drop_nulls()
+        idc_moy3 = idc_moy3_series.mean() if len(idc_moy3_series) > 0 else None
+
+    delta_abs = idc_current - seuil
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.metric(
+            label=f"IDC {latest_year}",
+            value=f"{idc_current:.0f} MJ/m²",
+            delta=f"{delta_abs:+.0f} MJ/m² vs seuil",
+            # red when above threshold (inverse: positive delta = bad)
+            delta_color="inverse",
+        )
+    with col2:
+        st.metric(
+            label="Moyenne 3 ans",
+            value=f"{idc_moy3:.0f} MJ/m²" if idc_moy3 is not None else "N/A",
+            help="Valeur indice_moy3 issue de la base SITG, pondérée par SRE.",
+        )
+    with col3:
+        st.metric(
+            label="Seuil de référence",
+            value=f"{seuil} MJ/m²",
+            help="Seuil indicatif configurable dans la barre latérale.",
+        )
+    with col4:
+        conforme = idc_current <= seuil
+        delta_pct = (delta_abs / seuil) * 100
+        st.metric(
+            label="Statut",
+            value="Conforme" if conforme else "Non conforme",
+            delta=f"{delta_pct:+.1f}%",
+            delta_color="off",
+        )
 
 
 @st.cache_data
-def create_barplot(data_df: List[Dict], nom_projet: str) -> None:
+def create_barplot(
+    data_df: List[Dict],
+    nom_projet: str,
+    seuil: Optional[int] = 450,
+    year_range: Optional[Tuple[int, int]] = None,
+) -> None:
     """
     Render a grouped bar chart of IDC by year and address.
 
-    Missing years are filled with 0 using a cross-join on the full year range,
-    avoiding nested loops.
+    Improvements over original:
+      - x-axis trimmed to actual data range (no trailing empty years)
+      - year_range filter from sidebar
+      - Horizontal reference line at configurable seuil
+      - indice_moy3 overlay as a dashed line per building
+      - Cross-join fill for missing years (no nested loops)
     """
-    df = pl.from_dicts(data_df).select(["adresse", "egid", "annee", "indice"])
+    df = pl.from_dicts(data_df).select(
+        ["adresse", "egid", "annee", "indice", "sre", "indice_moy3"]
+    )
 
-    current_year = datetime.now().year
-    years_df = pl.DataFrame({"annee": list(range(2011, current_year + 1))})
+    # Year bounds: trim to actual data, optionally narrowed by sidebar filter
+    data_min = df["annee"].min()
+    data_max = df["annee"].max()
+    min_year = max(year_range[0], data_min) if year_range else data_min
+    max_year = min(year_range[1], data_max) if year_range else data_max
 
-    # Cross-join all address/egid pairs with all years, then fill gaps
+    years_df = pl.DataFrame({"annee": list(range(min_year, max_year + 1))})
+
+    # Cross-join all (adresse, egid) pairs with all years, then left-join data
     df_full = (
         df.select(["adresse", "egid"]).unique()
         .join(years_df, how="cross")
-        .join(df, on=["adresse", "egid", "annee"], how="left")
+        .join(
+            df.select(["adresse", "egid", "annee", "indice"]),
+            on=["adresse", "egid", "annee"],
+            how="left",
+        )
         .with_columns(pl.col("indice").fill_null(0))
         .sort(["annee", "adresse", "egid"])
         .with_columns([
             (pl.col("adresse") + " - " + pl.col("egid").cast(pl.Utf8)).alias("adresse_egid"),
             pl.when(pl.col("indice") > 0)
-              .then(pl.col("indice").cast(pl.Utf8))
+              .then(pl.col("indice").cast(pl.Int64).cast(pl.Utf8))
               .otherwise(pl.lit(""))
               .alias("text"),
         ])
     )
 
-    # Compute right margin based on longest legend label
+    # indice_moy3 series for the line overlay, filtered to selected year range
+    df_moy3 = (
+        df.filter(
+            (pl.col("annee") >= min_year)
+            & (pl.col("annee") <= max_year)
+            & pl.col("indice_moy3").is_not_null()
+        )
+        .with_columns(
+            (pl.col("adresse") + " - " + pl.col("egid").cast(pl.Utf8)).alias("adresse_egid")
+        )
+        .select(["annee", "adresse_egid", "indice_moy3"])
+        .sort(["adresse_egid", "annee"])
+    )
+
     longest_label = df_full["adresse_egid"].str.len_chars().max()
     right_margin = longest_label * 8 + 25
 
-    # Plotly Express works directly with Polars DataFrames (v0.8+)
     fig = px.bar(
         df_full,
         x="annee",
         y="indice",
         color="adresse_egid",
         barmode="group",
-        labels={"annee": "Année", "indice": "Indice [MJ/m²]"},
-        title=f"Indice par Année et Adresse pour {nom_projet}",
+        labels={"annee": "Année", "indice": "Indice [MJ/m²]", "adresse_egid": "Adresse - EGID"},
+        title=f"Indice par Année et Adresse — {nom_projet}",
         text="text",
-        height=400,
+        height=450,
     )
 
     fig.update_traces(textposition="outside", texttemplate="%{text}", cliponaxis=False)
+
+    # Overlay indice_moy3 as a dashed line per building
+    palette = px.colors.qualitative.Plotly
+    for i, group_df in enumerate(
+        df_moy3.partition_by("adresse_egid", maintain_order=True)
+    ):
+        label = group_df["adresse_egid"][0]
+        fig.add_trace(
+            go.Scatter(
+                x=group_df["annee"].to_list(),
+                y=group_df["indice_moy3"].to_list(),
+                mode="lines+markers",
+                name=f"Moy3 — {label}",
+                line=dict(dash="dash", color=palette[i % len(palette)], width=2),
+                marker=dict(size=6),
+                showlegend=True,
+            )
+        )
+
+    # Reference line at IDC threshold
+    if seuil is not None:
+        fig.add_hline(
+            y=seuil,
+            line_dash="dot",
+            line_color="red",
+            line_width=1.5,
+            annotation_text=f"Seuil {seuil} MJ/m²",
+            annotation_position="top right",
+            annotation_font_color="red",
+        )
+
+    y_max = max(df_full["indice"].max() or 0, seuil or 0) * 1.2
+
     fig.update_layout(
         xaxis_title="Année",
         yaxis_title="Indice [MJ/m²]",
@@ -253,13 +395,11 @@ def create_barplot(data_df: List[Dict], nom_projet: str) -> None:
             "type": "category",
             "tickangle": 0,
             "gridcolor": "rgba(211, 211, 211, 0.2)",
-            "gridwidth": 0.1,
             "tickfont": {"size": 12},
         },
         yaxis={
-            "range": [0, df_full["indice"].max() * 1.15],
+            "range": [0, y_max],
             "gridcolor": "rgba(211, 211, 211, 0.2)",
-            "gridwidth": 0.1,
             "tickfont": {"size": 12},
         },
         margin=dict(t=50, r=right_margin, b=50, l=50),
@@ -294,3 +434,15 @@ def create_barplot(data_df: List[Dict], nom_projet: str) -> None:
             ],
         },
     )
+
+
+@st.cache_data
+def get_adresses_egid() -> pl.DataFrame:
+    """Load all address/EGID pairs from the local SQLite database."""
+    conn = sqlite3.connect("adresses_egid.db")
+    try:
+        return pl.read_database(
+            "SELECT * FROM adresses_egid ORDER BY adresse", conn
+        )
+    finally:
+        conn.close()
