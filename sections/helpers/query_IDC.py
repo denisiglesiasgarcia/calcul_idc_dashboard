@@ -244,11 +244,11 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
 
     delta_abs = idc_current - seuil
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(4)
 
     with col1:
         st.metric(
-            label=f"Dernier IDC ({latest_year})",
+            label=f"IDC ({latest_year})",
             value=f"{idc_current:.0f} MJ/m²",
             delta=f"{delta_abs:+.0f} MJ/m² vs seuil",
             # red when above threshold (inverse: positive delta = bad)
@@ -256,7 +256,7 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
         )
     with col2:
         st.metric(
-            label=f"Moyenne 3 ans ({', '.join(idc_moy3_years) if idc_moy3_years else 'N/A'})",
+            label=f"Moy. 3 ans ({', '.join(idc_moy3_years) if idc_moy3_years else 'N/A'})",
             value=f"{idc_moy3:.0f} MJ/m²" if idc_moy3 is not None else "N/A",
             help="Valeur indice_moy3 issue de la base SITG, pondérée par SRE.",
         )
@@ -266,16 +266,6 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
             value=f"{seuil} MJ/m²",
             help="Seuil indicatif configurable dans la barre latérale.",
         )
-    with col4:
-        conforme = idc_current <= seuil
-        delta_pct = (delta_abs / seuil) * 100
-        st.metric(
-            label="Statut",
-            value="Conforme" if conforme else "Non conforme",
-            delta=f"{delta_pct:+.1f}%",
-            delta_color="off",
-        )
-
 
 @st.cache_data
 def create_barplot(
