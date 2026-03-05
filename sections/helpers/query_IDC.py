@@ -586,7 +586,8 @@ def create_barplot(
 def refresh_adresses_db(
     url: str,
     db_path: str = "adresses_egid.db",
-    chunk_size: int = 1000,
+    chunk_size: int = 2000,
+    max_workers: int = 8,
     progress_bar=None,
     status_text=None,
 ) -> int:
@@ -594,55 +595,119 @@ def refresh_adresses_db(
     Fetch all unique address/EGID pairs from the SITG API and rebuild the
     local SQLite database from scratch.
 
-    Strategy: DROP + CREATE instead of DELETE to guarantee the PRIMARY KEY
-    constraint exists on every run, regardless of the previous schema.
-    INSERT OR IGNORE handles any duplicate (egid, adresse) pairs the API
-    may return within a single page or across pages.
+    Performance strategy:
+      - Fetch total count first, then compute all page offsets upfront.
+      - Fetch all pages in parallel via ThreadPoolExecutor (default 8 workers).
+      - Collect every record in memory, deduplicate with Polars, then do a
+        single bulk INSERT — one transaction, no per-page commits.
+      - chunk_size raised to 2000 (ArcGIS FeatureServer max) to halve the
+        number of HTTP requests compared to 1000.
 
     Args:
         url:          SITG API endpoint (same URL used for IDC queries).
         db_path:      Path to the local SQLite database.
-        chunk_size:   Records per API page.
+        chunk_size:   Records per API page (max 2000 for ArcGIS hosted services).
+        max_workers:  Parallel HTTP threads. 8 is a safe ceiling for a public API.
         progress_bar: Optional st.progress placeholder for visual feedback.
         status_text:  Optional st.empty placeholder for status messages.
 
-    Returns the total number of records saved.
+    Returns the total number of unique records saved.
     Cache invalidation is handled by the caller (get_all_addresses.clear()).
     """
+
     def _status(msg: str) -> None:
-        """Update status text if a placeholder was provided."""
         if status_text is not None:
             status_text.caption(msg)
         logging.info(f"refresh_adresses_db → {msg}")
 
     def _progress(value: float) -> None:
-        """Update progress bar (0.0–1.0) if a placeholder was provided."""
         if progress_bar is not None:
             progress_bar.progress(value)
 
-    # --- Step 1: get total record count for accurate progress reporting ---
+    # --- Step 1: total count so we can pre-compute all offsets ---
     _status("Connexion au SITG — récupération du nombre total d'adresses...")
     _progress(0.0)
 
-    count_params = {
-        "where": "1=1",
-        "returnCountOnly": "true",
-        "f": "json",
-    }
-    total_count = 0
     try:
-        resp = requests.get(url, params=count_params)
+        resp = requests.get(
+            url, params={"where": "1=1", "returnCountOnly": "true", "f": "json"}
+        )
         resp.raise_for_status()
         total_count = resp.json().get("count", 0)
-        _status(f"{total_count} adresses trouvées — début du téléchargement...")
     except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
         logging.warning(f"refresh_adresses_db → count request failed: {e}")
+        total_count = 0
 
-    # --- Step 2: rebuild table from scratch ---
-    # DROP + CREATE ensures the PRIMARY KEY constraint is always present,
-    # even when upgrading from an older schema that lacked it.
-    # The entire operation runs in a single transaction: if the download
-    # fails mid-way, ROLLBACK restores the previous table intact.
+    if total_count == 0:
+        raise RuntimeError(
+            "Impossible de récupérer le nombre total d'adresses depuis le SITG."
+        )
+
+    _status(f"{total_count:,} adresses trouvées — téléchargement en parallèle...")
+
+    # Pre-compute every page offset so futures can be dispatched all at once
+    offsets = list(range(0, total_count, chunk_size))
+    completed_pages = 0
+    lock = threading.Lock()
+    all_records: list[tuple] = []
+
+    # --- Step 2: fetch all pages in parallel ---
+    def fetch_page(offset: int) -> list[tuple]:
+        """Fetch one page and return list of (egid, adresse) tuples."""
+        params = {
+            "where": "1=1",
+            "outFields": "adresse,egid",
+            "returnGeometry": "false",
+            "f": "json",
+            "resultOffset": offset,
+            "resultRecordCount": chunk_size,
+        }
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
+        features = response.json().get("features", [])
+        return [
+            (f["attributes"]["egid"], f["attributes"]["adresse"])
+            for f in features
+            if f["attributes"].get("egid") and f["attributes"].get("adresse")
+        ]
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(fetch_page, off): off for off in offsets}
+        for future in as_completed(futures):
+            offset = futures[future]
+            try:
+                records = future.result()
+            except Exception as e:
+                raise RuntimeError(
+                    f"Échec du téléchargement à l'offset {offset}: {e}"
+                ) from e
+
+            with lock:
+                all_records.extend(records)
+                completed_pages += 1
+                progress_value = completed_pages / len(offsets)
+                _progress(progress_value * 0.9)  # reserve last 10% for DB write
+                _status(
+                    f"Téléchargé {len(all_records):,} / ~{total_count:,} adresses "
+                    f"({progress_value * 100:.0f}%)"
+                )
+
+    # --- Step 3: deduplicate with Polars before touching the DB ---
+    _status("Dédoublonnage et écriture en base...")
+    df = (
+        pl.DataFrame(
+            {
+                "egid": [r[0] for r in all_records],
+                "adresse": [r[1] for r in all_records],
+            }
+        )
+        .unique()  # removes any cross-page duplicates the API may return
+        .sort("adresse")
+    )
+    unique_records = df.rows()  # list of (egid, adresse) tuples
+
+    # --- Step 4: rebuild table and bulk insert in one transaction ---
+    # DROP + CREATE guarantees the PRIMARY KEY constraint is always present.
     conn = sqlite3.connect(db_path)
     conn.execute("DROP TABLE IF EXISTS adresses_egid")
     conn.execute("""
@@ -652,67 +717,16 @@ def refresh_adresses_db(
             PRIMARY KEY (egid, adresse)
         )
     """)
-    # Index on adresse speeds up the ORDER BY in get_all_addresses()
-    conn.execute("""
-        CREATE INDEX idx_adresse ON adresses_egid (adresse)
-    """)
+    # Index on adresse speeds up ORDER BY in get_all_addresses()
+    conn.execute("CREATE INDEX idx_adresse ON adresses_egid (adresse)")
     conn.execute("BEGIN")
-    _status("Table recréée — insertion des nouvelles données...")
-
-    offset = 0
-    total_saved = 0
-
-    # --- Step 3: paginate and insert ---
-    while True:
-        params = {
-            "where": "1=1",
-            "outFields": "adresse,egid",
-            "returnGeometry": "false",
-            "f": "json",
-            "resultOffset": offset,
-            "resultRecordCount": chunk_size,
-        }
-        try:
-            response = requests.get(url, params=params)
-            response.raise_for_status()
-            data = response.json()
-        except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
-            logging.error(f"refresh_adresses_db → error at offset {offset}: {e}")
-            conn.execute("ROLLBACK")
-            conn.close()
-            raise RuntimeError(f"Échec du téléchargement à l'offset {offset}: {e}") from e
-
-        features = data.get("features", [])
-        if not features:
-            break
-
-        records = [
-            (f["attributes"]["egid"], f["attributes"]["adresse"])
-            for f in features
-            if f["attributes"].get("adresse") and f["attributes"].get("egid")
-        ]
-
-        # OR IGNORE: silently skip duplicates the API may return across pages
-        conn.executemany(
-            "INSERT OR IGNORE INTO adresses_egid (egid, adresse) VALUES (?, ?)",
-            records,
-        )
-
-        total_saved += len(records)
-        offset += len(features)
-
-        progress_value = min(total_saved / total_count, 1.0) if total_count > 0 else 0.0
-        _progress(progress_value)
-        _status(
-            f"Téléchargé {total_saved:,}"
-            + (f" / {total_count:,} adresses ({progress_value*100:.0f}%)" if total_count else " adresses...")
-        )
-
-        # API returned fewer records than requested — last page reached
-        if len(features) < chunk_size:
-            break
-
+    conn.executemany(
+        "INSERT INTO adresses_egid (egid, adresse) VALUES (?, ?)",
+        unique_records,
+    )
     conn.execute("COMMIT")
     conn.close()
+
     _progress(1.0)
-    return total_saved
+    _status(f"Terminé — {len(unique_records):,} adresses uniques enregistrées.")
+    return len(unique_records)
