@@ -244,7 +244,7 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
 
     delta_abs = idc_current - seuil
 
-    col1, col2, col3 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
 
     with col1:
         st.metric(
