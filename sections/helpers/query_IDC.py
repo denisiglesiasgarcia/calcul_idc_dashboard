@@ -284,8 +284,16 @@ def create_barplot(
       - indice_moy3 overlay as a dashed line per building
       - Cross-join fill for missing years (no nested loops)
     """
+    # Extra columns needed for the bar hover tooltip
+    HOVER_COLS = [
+        "sre", "destination",
+        "agent_energetique_1", "quantite_agent_energetique_1", "unite_agent_energetique_1",
+        "agent_energetique_2", "quantite_agent_energetique_2", "unite_agent_energetique_2",
+        "date_debut_periode", "date_fin_periode",
+    ]
     df = pl.from_dicts(data_df).select(
-        ["adresse", "egid", "annee", "indice", "sre", "indice_moy3", "annees_concernees_moy_3"]
+        ["adresse", "egid", "annee", "indice", "indice_moy3", "annees_concernees_moy_3"]
+        + HOVER_COLS
     )
 
     # Year bounds: trim to actual data, optionally narrowed by sidebar filter
@@ -309,12 +317,13 @@ def create_barplot(
     # Ensure join key types match (API may return Int64; cast to Int32 for consistency)
     df = df.with_columns(pl.col("annee").cast(pl.Int32))
 
-    # Cross-join all (adresse, egid) pairs with all years, then left-join data
+    # Cross-join all (adresse, egid) pairs with all years, then left-join data.
+    # Hover columns are carried through so px.bar can reference them via custom_data.
     df_full = (
         df.select(["adresse", "egid"]).unique()
         .join(years_df, how="cross")
         .join(
-            df.select(["adresse", "egid", "annee", "indice"]),
+            df.select(["adresse", "egid", "annee", "indice"] + HOVER_COLS),
             on=["adresse", "egid", "annee"],
             how="left",
         )
@@ -326,6 +335,26 @@ def create_barplot(
               .then(pl.col("indice").cast(pl.Int64).cast(pl.Utf8))
               .otherwise(pl.lit(""))
               .alias("text"),
+            # Format agent lines: "Gaz — 257835 kWh" or empty when null
+            pl.when(pl.col("agent_energetique_1").is_not_null())
+              .then(
+                  pl.col("agent_energetique_1") + " — "
+                  + pl.col("quantite_agent_energetique_1").cast(pl.Utf8) + " "
+                  + pl.col("unite_agent_energetique_1").fill_null("")
+              )
+              .otherwise(pl.lit(""))
+              .alias("agent_1_label"),
+            pl.when(pl.col("agent_energetique_2").is_not_null())
+              .then(
+                  pl.col("agent_energetique_2") + " — "
+                  + pl.col("quantite_agent_energetique_2").cast(pl.Utf8) + " "
+                  + pl.col("unite_agent_energetique_2").fill_null("")
+              )
+              .otherwise(pl.lit(""))
+              .alias("agent_2_label"),
+            # Format period as "2014-05-01 → 2015-04-30"
+            pl.col("date_debut_periode").cast(pl.Utf8).str.slice(0, 10).alias("debut"),
+            pl.col("date_fin_periode").cast(pl.Utf8).str.slice(0, 10).alias("fin"),
         ])
     )
 
@@ -340,26 +369,44 @@ def create_barplot(
         .with_columns(
             (pl.col("adresse") + " - " + pl.col("egid").cast(pl.Utf8)).alias("adresse_egid")
         )
-        .select(["annee", "adresse_egid", "indice_moy3", "annees_concernees_moy_3", "sre"])
+        .select(["annee", "adresse_egid", "indice_moy3", "annees_concernees_moy_3"])
         .sort(["adresse_egid", "annee"])
     )
 
     longest_label = df_full["adresse_egid"].str.len_chars().max()
     right_margin = longest_label * 8 + 25
 
+    # custom_data index mapping (used in hovertemplate):
+    #   0: sre          1: destination   2: agent_1_label
+    #   3: agent_2_label 4: debut        5: fin
     fig = px.bar(
         df_full,
         x="annee",
         y="indice",
         color="adresse_egid",
         barmode="group",
-        labels={"annee": "Année", "indice": "Indice [MJ/m²]", "adresse_egid": "Adresse - EGID", "sre": "SRE [m²]"},
+        custom_data=["sre", "destination", "agent_1_label", "agent_2_label", "debut", "fin"],
+        labels={"annee": "Année", "indice": "Indice [MJ/m²]", "adresse_egid": "Adresse - EGID"},
         title=f"Indice par Année et Adresse — {nom_projet}",
         text="text",
         height=450,
     )
 
-    fig.update_traces(textposition="outside", texttemplate="%{text}", cliponaxis=False)
+    fig.update_traces(
+        textposition="outside",
+        texttemplate="%{text}",
+        cliponaxis=False,
+        hovertemplate=(
+            "<b>Année %{x}</b><br>"
+            "IDC : <b>%{y:.0f} MJ/m²</b><br>"
+            "SRE : %{customdata[0]:.0f} m²<br>"
+            "Destination : %{customdata[1]}<br>"
+            "Période : %{customdata[4]} → %{customdata[5]}<br>"
+            "Agent 1 : %{customdata[2]}<br>"
+            "Agent 2 : %{customdata[3]}<br>"
+            "<extra></extra>"
+        ),
+    )
 
     # Overlay indice_moy3 as a dashed line per building.
     # customdata carries annees_concernees_moy_3 so the hover shows which
@@ -449,6 +496,7 @@ def create_barplot(
             ],
         },
     )
+
 
 
 @st.cache_data
