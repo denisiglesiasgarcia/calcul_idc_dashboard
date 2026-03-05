@@ -180,7 +180,7 @@ with tab3:
                 show_map(geojson_data, centroid)
 
             # KPI row
-            st.subheader("Indicateurs clés")
+            st.subheader("Derniers indicateurs clés disponibles")
             show_kpis(data_df, seuil=seuil)
 
             # Historical bar chart
