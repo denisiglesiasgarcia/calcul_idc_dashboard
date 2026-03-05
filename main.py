@@ -2,7 +2,7 @@
 
 import os
 import sqlite3
-
+from datetime import datetime
 import polars as pl
 import streamlit as st
 
@@ -34,7 +34,8 @@ URL_INDICE_MOYENNES_3_ANS = (
     "SCANE_INDICE_MOYENNES_3_ANS/FeatureServer/0/query"
 )
 
-CURRENT_YEAR = 2025  # upper bound for year range slider
+CURRENT_YEAR = datetime.now().year
+
 
 
 @st.cache_data
@@ -97,6 +98,25 @@ with st.sidebar:
 
 with tab3:
     st.subheader("Sélection adresse")
+
+    # Allow multiselect tags to expand to their full text width instead of
+    # truncating with "...". The span inside each tag holds the label text.
+    st.markdown(
+        """
+        <style>
+        span[data-baseweb="tag"] {
+            max-width: none !important;
+            white-space: normal !important;
+        }
+        span[data-baseweb="tag"] span {
+            overflow: visible !important;
+            white-space: normal !important;
+            text-overflow: unset !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     df_addresses = get_all_addresses()
 
