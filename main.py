@@ -104,13 +104,17 @@ with tab3:
     st.markdown(
         """
         <style>
+        /* Tag container: remove max-width cap and grow to fit content */
         span[data-baseweb="tag"] {
             max-width: none !important;
+            width: fit-content !important;
         }
-        span[data-baseweb="tag"] span {
+        /* Inner text span: keep single line, disable overflow clipping */
+        span[data-baseweb="tag"] > span:first-child {
             overflow: visible !important;
             white-space: nowrap !important;
             text-overflow: unset !important;
+            max-width: none !important;
         }
         </style>
         """,
