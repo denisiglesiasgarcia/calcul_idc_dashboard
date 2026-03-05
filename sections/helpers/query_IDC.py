@@ -646,7 +646,10 @@ def refresh_adresses_db(
         # Non-fatal: progress will show indeterminate (always at 0) but continue
         logging.warning(f"refresh_adresses_db → count request failed: {e}")
 
-    # --- Step 2: create/ensure table ---
+    # --- Step 2: create/ensure table, then clear stale data ---
+    # DELETE all rows first so records removed from the API don't persist.
+    # Done inside a transaction: if the download fails mid-way, the ROLLBACK
+    # in the except block restores the previous data.
     conn = sqlite3.connect(db_path)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS adresses_egid (
@@ -655,6 +658,9 @@ def refresh_adresses_db(
             PRIMARY KEY (egid, adresse)
         )
     """)
+    conn.execute("BEGIN")
+    conn.execute("DELETE FROM adresses_egid")
+    _status("Table vidée — insertion des nouvelles données...")
 
     offset = 0
     total_saved = 0
@@ -675,7 +681,9 @@ def refresh_adresses_db(
             data = response.json()
         except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
             logging.error(f"refresh_adresses_db → error at offset {offset}: {e}")
-            break
+            conn.execute("ROLLBACK")
+            conn.close()
+            raise RuntimeError(f"Échec du téléchargement à l'offset {offset}: {e}") from e
 
         features = data.get("features", [])
         if not features:
@@ -688,10 +696,9 @@ def refresh_adresses_db(
         ]
 
         conn.executemany(
-            "INSERT OR REPLACE INTO adresses_egid (egid, adresse) VALUES (?, ?)",
+            "INSERT INTO adresses_egid (egid, adresse) VALUES (?, ?)",
             records,
         )
-        conn.commit()
 
         total_saved += len(records)
         offset += len(features)
@@ -708,6 +715,7 @@ def refresh_adresses_db(
         if len(features) < chunk_size:
             break
 
+    conn.execute("COMMIT")
     conn.close()
     _progress(1.0)
     return total_saved
