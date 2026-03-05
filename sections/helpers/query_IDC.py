@@ -311,11 +311,19 @@ def create_barplot(
     """
     # Extra columns needed for the bar hover tooltip
     HOVER_COLS = [
-        "sre", "destination",
-        "agent_energetique_1", "quantite_agent_energetique_1", "unite_agent_energetique_1",
-        "agent_energetique_2", "quantite_agent_energetique_2", "unite_agent_energetique_2",
-        "agent_energetique_3", "quantite_agent_energetique_3", "unite_agent_energetique_3",
-        "date_debut_periode", "date_fin_periode",
+        "sre",
+        "destination",
+        "agent_energetique_1",
+        "quantite_agent_energetique_1",
+        "unite_agent_energetique_1",
+        "agent_energetique_2",
+        "quantite_agent_energetique_2",
+        "unite_agent_energetique_2",
+        "agent_energetique_3",
+        "quantite_agent_energetique_3",
+        "unite_agent_energetique_3",
+        "date_debut_periode",
+        "date_fin_periode",
     ]
     df = pl.from_dicts(data_df).select(
         ["adresse", "egid", "annee", "indice", "indice_moy3", "annees_concernees_moy_3"]
@@ -338,7 +346,9 @@ def create_barplot(
         return
 
     # Explicit Int32 dtype prevents a Null-type schema when the range is empty
-    years_df = pl.DataFrame({"annee": pl.Series(range(min_year, max_year + 1), dtype=pl.Int32)})
+    years_df = pl.DataFrame(
+        {"annee": pl.Series(range(min_year, max_year + 1), dtype=pl.Int32)}
+    )
 
     # Ensure join key types match (API may return Int64; cast to Int32 for consistency)
     df = df.with_columns(pl.col("annee").cast(pl.Int32))
@@ -346,7 +356,8 @@ def create_barplot(
     # Cross-join all (adresse, egid) pairs with all years, then left-join data.
     # Hover columns are carried through so px.bar can reference them via custom_data.
     df_full = (
-        df.select(["adresse", "egid"]).unique()
+        df.select(["adresse", "egid"])
+        .unique()
         .join(years_df, how="cross")
         .join(
             df.select(["adresse", "egid", "annee", "indice"] + HOVER_COLS),
@@ -355,41 +366,54 @@ def create_barplot(
         )
         .with_columns(pl.col("indice").fill_null(0))
         .sort(["annee", "adresse", "egid"])
-        .with_columns([
-            (pl.col("adresse") + " - " + pl.col("egid").cast(pl.Utf8)).alias("adresse_egid"),
-            pl.when(pl.col("indice") > 0)
-              .then(pl.col("indice").cast(pl.Int64).cast(pl.Utf8))
-              .otherwise(pl.lit(""))
-              .alias("text"),
-            # Format agent lines: "Gaz — 257835 kWh" or empty when null
-            pl.when(pl.col("agent_energetique_1").is_not_null())
-              .then(
-                  pl.col("agent_energetique_1") + " — "
-                  + pl.col("quantite_agent_energetique_1").cast(pl.Utf8) + " "
-                  + pl.col("unite_agent_energetique_1").fill_null("")
-              )
-              .otherwise(pl.lit(""))
-              .alias("agent_1_label"),
-            pl.when(pl.col("agent_energetique_2").is_not_null())
-              .then(
-                  pl.col("agent_energetique_2") + " — "
-                  + pl.col("quantite_agent_energetique_2").cast(pl.Utf8) + " "
-                  + pl.col("unite_agent_energetique_2").fill_null("")
-              )
-              .otherwise(pl.lit(""))
-              .alias("agent_2_label"),
-            pl.when(pl.col("agent_energetique_3").is_not_null())
-              .then(
-                  pl.col("agent_energetique_3") + " — "
-                  + pl.col("quantite_agent_energetique_3").cast(pl.Utf8) + " "
-                  + pl.col("unite_agent_energetique_3").fill_null("")
-              )
-              .otherwise(pl.lit(""))
-              .alias("agent_3_label"),
-            # Format period as "2014-05-01 → 2015-04-30"
-            pl.col("date_debut_periode").cast(pl.Utf8).str.slice(0, 10).alias("debut"),
-            pl.col("date_fin_periode").cast(pl.Utf8).str.slice(0, 10).alias("fin"),
-        ])
+        .with_columns(
+            [
+                (pl.col("adresse") + " - " + pl.col("egid").cast(pl.Utf8)).alias(
+                    "adresse_egid"
+                ),
+                pl.when(pl.col("indice") > 0)
+                .then(pl.col("indice").cast(pl.Int64).cast(pl.Utf8))
+                .otherwise(pl.lit(""))
+                .alias("text"),
+                # Format agent lines: "Gaz — 257835 kWh" or empty when null
+                pl.when(pl.col("agent_energetique_1").is_not_null())
+                .then(
+                    pl.col("agent_energetique_1")
+                    + " — "
+                    + pl.col("quantite_agent_energetique_1").cast(pl.Utf8)
+                    + " "
+                    + pl.col("unite_agent_energetique_1").fill_null("")
+                )
+                .otherwise(pl.lit(""))
+                .alias("agent_1_label"),
+                pl.when(pl.col("agent_energetique_2").is_not_null())
+                .then(
+                    pl.col("agent_energetique_2")
+                    + " — "
+                    + pl.col("quantite_agent_energetique_2").cast(pl.Utf8)
+                    + " "
+                    + pl.col("unite_agent_energetique_2").fill_null("")
+                )
+                .otherwise(pl.lit(""))
+                .alias("agent_2_label"),
+                pl.when(pl.col("agent_energetique_3").is_not_null())
+                .then(
+                    pl.col("agent_energetique_3")
+                    + " — "
+                    + pl.col("quantite_agent_energetique_3").cast(pl.Utf8)
+                    + " "
+                    + pl.col("unite_agent_energetique_3").fill_null("")
+                )
+                .otherwise(pl.lit(""))
+                .alias("agent_3_label"),
+                # Format period as "2014-05-01 → 2015-04-30"
+                pl.col("date_debut_periode")
+                .cast(pl.Utf8)
+                .str.slice(0, 10)
+                .alias("debut"),
+                pl.col("date_fin_periode").cast(pl.Utf8).str.slice(0, 10).alias("fin"),
+            ]
+        )
     )
 
     # indice_moy3 series for the line overlay, filtered to selected year range
@@ -401,7 +425,9 @@ def create_barplot(
             & pl.col("indice_moy3").is_not_null()
         )
         .with_columns(
-            (pl.col("adresse") + " - " + pl.col("egid").cast(pl.Utf8)).alias("adresse_egid")
+            (pl.col("adresse") + " - " + pl.col("egid").cast(pl.Utf8)).alias(
+                "adresse_egid"
+            )
         )
         .select(["annee", "adresse_egid", "indice_moy3", "annees_concernees_moy_3"])
         .sort(["adresse_egid", "annee"])
@@ -420,8 +446,21 @@ def create_barplot(
         y="indice",
         color="adresse_egid",
         barmode="group",
-        custom_data=["adresse_egid", "sre", "destination", "agent_1_label", "agent_2_label", "agent_3_label", "debut", "fin"],
-        labels={"annee": "Année", "indice": "Indice [MJ/m²]", "adresse_egid": "Adresse - EGID"},
+        custom_data=[
+            "adresse_egid",
+            "sre",
+            "destination",
+            "agent_1_label",
+            "agent_2_label",
+            "agent_3_label",
+            "debut",
+            "fin",
+        ],
+        labels={
+            "annee": "Année",
+            "indice": "Indice [MJ/m²]",
+            "adresse_egid": "Adresse - EGID",
+        },
         title=f"Indice par Année et Adresse — {nom_projet}",
         text="text",
         height=450,
@@ -503,7 +542,10 @@ def create_barplot(
         },
         margin=dict(t=50, r=right_margin, b=50, l=50),
         legend=dict(
-            yanchor="top", y=1, xanchor="left", x=1,
+            yanchor="top",
+            y=1,
+            xanchor="left",
+            x=1,
             bgcolor="rgba(255, 255, 255, 0.8)",
             borderwidth=0,
         ),
@@ -528,8 +570,14 @@ def create_barplot(
             "displayModeBar": True,
             "displaylogo": False,
             "modeBarButtonsToRemove": [
-                "zoom2d", "pan2d", "select2d", "lasso2d",
-                "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d",
+                "zoom2d",
+                "pan2d",
+                "select2d",
+                "lasso2d",
+                "zoomIn2d",
+                "zoomOut2d",
+                "autoScale2d",
+                "resetScale2d",
             ],
         },
     )
@@ -540,6 +588,76 @@ def get_adresses_egid() -> pl.DataFrame:
     """Load all address/EGID pairs from the local SQLite database."""
     conn = sqlite3.connect("adresses_egid.db")
     try:
-        return pl.read_database("SELECT * FROM adresses_egid ORDER BY adresse", conn)
+        return pl.read_database(
+            "SELECT * FROM adresses_egid ORDER BY adresse", conn
+        )
     finally:
         conn.close()
+
+
+def refresh_adresses_db(
+    url: str,
+    db_path: str = "adresses_egid.db",
+    chunk_size: int = 1000,
+) -> int:
+    """
+    Fetch all unique address/EGID pairs from the SITG API and upsert them
+    into the local SQLite database.
+
+    Returns the total number of records saved.
+    Called from the sidebar refresh button; cache is cleared by the caller.
+    """
+    conn = sqlite3.connect(db_path)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS adresses_egid (
+            egid    INTEGER,
+            adresse TEXT,
+            PRIMARY KEY (egid, adresse)
+        )
+    """)
+
+    offset = 0
+    total_saved = 0
+
+    while True:
+        params = {
+            "where": "1=1",
+            "outFields": "adresse,egid",
+            "returnGeometry": "false",
+            "f": "json",
+            "resultOffset": offset,
+            "resultRecordCount": chunk_size,
+        }
+        try:
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
+        except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+            logging.error(f"refresh_adresses_db → error at offset {offset}: {e}")
+            break
+
+        features = data.get("features", [])
+        if not features:
+            break
+
+        records = [
+            (f["attributes"]["egid"], f["attributes"]["adresse"])
+            for f in features
+            if f["attributes"].get("adresse") and f["attributes"].get("egid")
+        ]
+
+        conn.executemany(
+            "INSERT OR REPLACE INTO adresses_egid (egid, adresse) VALUES (?, ?)",
+            records,
+        )
+        conn.commit()
+
+        total_saved += len(records)
+        offset += len(features)
+
+        # API returned fewer records than requested — we have reached the end
+        if len(features) < chunk_size:
+            break
+
+    conn.close()
+    return total_saved
