@@ -179,47 +179,48 @@ with tab3:
         st.warning("Sélectionner au moins une adresse pour continuer.")
 
     # ---------------------------------------------------------------------------------------
-    if selected_options and len(st.session_state.get("data_verif_idc", [])) > 0:
-        st.subheader("Plan de situation")
+    try:
+        if selected_options and len(st.session_state.get("data_verif_idc", [])) > 0:
+            st.subheader("Plan de situation")
 
-        egids = st.session_state["data_verif_idc"]["egid"].to_list()
+            egids = st.session_state["data_verif_idc"]["egid"].to_list()
 
-        # ------------------------------------------------------------------
-        # API cache in session_state — avoids re-fetching when the user only
-        # toggles a checkbox or adjusts a sidebar parameter.
-        # The cache is invalidated whenever the selected EGID set changes.
-        # ------------------------------------------------------------------
-        cache_key = tuple(sorted(egids))
-        if st.session_state.get("_api_cache_key") != cache_key:
-            with st.spinner("Chargement des données SITG..."):
-                data_geometry, data_df = fetch_idc_data(
-                    egids, URL_INDICE_MOYENNES_3_ANS
-                )
-            st.session_state["_api_cache_key"] = cache_key
-            st.session_state["_api_geometry"] = data_geometry
-            st.session_state["_api_df"] = data_df
-        else:
-            data_geometry = st.session_state["_api_geometry"]
-            data_df = st.session_state["_api_df"]
+            # ------------------------------------------------------------------
+            # API cache in session_state — avoids re-fetching when the user only
+            # toggles a checkbox or adjusts a sidebar parameter.
+            # The cache is invalidated whenever the selected EGID set changes.
+            # ------------------------------------------------------------------
+            cache_key = tuple(sorted(egids))
+            if st.session_state.get("_api_cache_key") != cache_key:
+                with st.spinner("Chargement des données SITG..."):
+                    data_geometry, data_df = fetch_idc_data(
+                        egids, URL_INDICE_MOYENNES_3_ANS
+                    )
+                st.session_state["_api_cache_key"] = cache_key
+                st.session_state["_api_geometry"] = data_geometry
+                st.session_state["_api_df"] = data_df
+            else:
+                data_geometry = st.session_state["_api_geometry"]
+                data_df = st.session_state["_api_df"]
 
-        if data_geometry and data_df:
-            if st.checkbox("Afficher la carte"):
-                geojson_data, centroid = convert_geometry_for_streamlit(data_geometry)
-                show_map(geojson_data, centroid)
+            if data_geometry and data_df:
+                if st.checkbox("Afficher la carte"):
+                    geojson_data, centroid = convert_geometry_for_streamlit(data_geometry)
+                    show_map(geojson_data, centroid)
 
-            # KPI row
-            st.subheader("Derniers indicateurs clés disponibles")
-            show_kpis(data_df, seuil=seuil)
+                # KPI row
+                st.subheader("Derniers indicateurs clés disponibles")
+                show_kpis(data_df, seuil=seuil)
 
-            # Historical bar chart
-            st.subheader("Historique IDC")
-            adresses_titre = st.session_state["data_verif_idc"]["adresse"].to_list()
-            title = ", ".join(adresses_titre)
-            create_barplot(data_df, title, seuil=seuil, year_range=year_range)
+                # Historical bar chart
+                st.subheader("Historique IDC")
+                adresses_titre = st.session_state["data_verif_idc"]["adresse"].to_list()
+                title = ", ".join(adresses_titre)
+                create_barplot(data_df, title, seuil=seuil, year_range=year_range)
 
-            if st.checkbox("Afficher les données IDC"):
-                show_dataframe(data_df)
-        else:
-            st.error("Pas de données disponibles pour le(s) EGID associé(s) à ce site.")
-    else:
-        st.write("Pas d'adresse sélectionnée.")
+                if st.checkbox("Afficher les données IDC"):
+                    show_dataframe(data_df)
+            else:
+                st.error("Pas de données disponibles pour le(s) EGID associé(s) à ce site.")
+    except Exception as e:
+        st.error(f"Une erreur est survenue lors de l'analyse : {e}")
