@@ -234,12 +234,13 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
             (df_moy3["indice_moy3"] * df_moy3["sre"]).sum() / sre_moy3
             if sre_moy3 and sre_moy3 > 0 else None
         )
+        idc_moy3_years = df_latest["annees_concernees_moy_3"].drop_nulls().to_list()
     else:
         # Fallback to simple mean when SRE is missing
         idc_current = df_latest["indice"].mean()
         idc_moy3_series = df_latest["indice_moy3"].drop_nulls()
         idc_moy3 = idc_moy3_series.mean() if len(idc_moy3_series) > 0 else None
-        idc_moy3_years = df_latest["annees_concernees_moy_3"].drop_nulls().to_list()
+        idc_moy3_years = "N/A"
 
     delta_abs = idc_current - seuil
 
