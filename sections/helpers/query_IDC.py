@@ -21,15 +21,32 @@ logging.basicConfig(level=logging.DEBUG)
 
 # Columns to keep from the API response, in display order
 RESULT_COLUMNS = [
-    "egid", "annee", "indice", "sre", "adresse", "npa", "commune",
+    "egid",
+    "annee",
+    "indice",
+    "sre",
+    "adresse",
+    "npa",
+    "commune",
     "destination",
-    "agent_energetique_1", "quantite_agent_energetique_1", "unite_agent_energetique_1",
-    "agent_energetique_2", "quantite_agent_energetique_2", "unite_agent_energetique_2",
-    "agent_energetique_3", "quantite_agent_energetique_3", "unite_agent_energetique_3",
-    "date_debut_periode", "date_fin_periode", "date_saisie",
-    "indice_moy2", "annees_concernees_moy_2",
-    "indice_moy3", "annees_concernees_moy_3",
-    "id_concessionnaire", "nbre_preneur",
+    "agent_energetique_1",
+    "quantite_agent_energetique_1",
+    "unite_agent_energetique_1",
+    "agent_energetique_2",
+    "quantite_agent_energetique_2",
+    "unite_agent_energetique_2",
+    "agent_energetique_3",
+    "quantite_agent_energetique_3",
+    "unite_agent_energetique_3",
+    "date_debut_periode",
+    "date_fin_periode",
+    "date_saisie",
+    "indice_moy2",
+    "annees_concernees_moy_2",
+    "indice_moy3",
+    "annees_concernees_moy_3",
+    "id_concessionnaire",
+    "nbre_preneur",
 ]
 
 
@@ -52,7 +69,8 @@ def fetch_idc_data(
         data_records:     cleaned, deduplicated attribute dicts for charts/tables.
     """
     where_clause = (
-        f"egid IN ({','.join(map(str, egid))})" if isinstance(egid, list)
+        f"egid IN ({','.join(map(str, egid))})"
+        if isinstance(egid, list)
         else f"egid={egid}"
     )
     params = {
@@ -77,8 +95,7 @@ def fetch_idc_data(
 
         # Geometry records: keep raw attributes + geometry for show_map
         geometry_records = [
-            {"attributes": f["attributes"], "geometry": f["geometry"]}
-            for f in features
+            {"attributes": f["attributes"], "geometry": f["geometry"]} for f in features
         ]
 
         # Tabular records: clean and deduplicate with Polars
@@ -86,15 +103,17 @@ def fetch_idc_data(
         df = (
             pl.from_dicts(raw_records)
             .select(RESULT_COLUMNS)
-            .with_columns([
-                pl.col("date_debut_periode").cast(pl.Datetime("ms")),
-                pl.col("date_fin_periode").cast(pl.Datetime("ms")),
-                pl.col("date_saisie").cast(pl.Datetime("ms")),
-                pl.col("npa").cast(pl.Int64),
-                pl.col("quantite_agent_energetique_1").cast(pl.Float64),
-                pl.col("quantite_agent_energetique_2").cast(pl.Float64),
-                pl.col("quantite_agent_energetique_3").cast(pl.Float64),
-            ])
+            .with_columns(
+                [
+                    pl.col("date_debut_periode").cast(pl.Datetime("ms")),
+                    pl.col("date_fin_periode").cast(pl.Datetime("ms")),
+                    pl.col("date_saisie").cast(pl.Datetime("ms")),
+                    pl.col("npa").cast(pl.Int64),
+                    pl.col("quantite_agent_energetique_1").cast(pl.Float64),
+                    pl.col("quantite_agent_energetique_2").cast(pl.Float64),
+                    pl.col("quantite_agent_energetique_3").cast(pl.Float64),
+                ]
+            )
             # Keep only the most recent saisie per (egid, annee)
             .sort(["egid", "annee", "date_saisie"], descending=[False, False, True])
             .unique(subset=["egid", "annee"], keep="first")
@@ -151,11 +170,13 @@ def convert_geometry_for_streamlit(data: List[Dict]) -> Tuple:
                 all_points.append([lon, lat])
             new_rings.append(new_ring)
 
-        features.append({
-            "type": "Feature",
-            "geometry": {"type": "Polygon", "coordinates": new_rings},
-            "properties": item["attributes"],
-        })
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": {"type": "Polygon", "coordinates": new_rings},
+                "properties": item["attributes"],
+            }
+        )
 
     geojson = {"type": "FeatureCollection", "features": features}
     centroid = np.mean(all_points, axis=0)
@@ -214,11 +235,13 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
     SRE weighting ensures larger buildings are not treated equally to smaller
     ones when multiple EGIDs are selected.
     """
-    df = pl.from_dicts(data_df).with_columns([
-        pl.col("sre").cast(pl.Float64),
-        pl.col("indice").cast(pl.Float64),
-        pl.col("indice_moy3").cast(pl.Float64),
-    ])
+    df = pl.from_dicts(data_df).with_columns(
+        [
+            pl.col("sre").cast(pl.Float64),
+            pl.col("indice").cast(pl.Float64),
+            pl.col("indice_moy3").cast(pl.Float64),
+        ]
+    )
 
     latest_year = df["annee"].max()
     df_latest = df.filter(pl.col("annee") == latest_year)
@@ -232,7 +255,8 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
         sre_moy3 = df_moy3["sre"].sum()
         idc_moy3 = (
             (df_moy3["indice_moy3"] * df_moy3["sre"]).sum() / sre_moy3
-            if sre_moy3 and sre_moy3 > 0 else None
+            if sre_moy3 and sre_moy3 > 0
+            else None
         )
         idc_moy3_years = df_latest["annees_concernees_moy_3"].drop_nulls().to_list()
     else:
@@ -267,6 +291,7 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
             help="Seuil indicatif configurable dans la barre latérale.",
         )
 
+
 @st.cache_data
 def create_barplot(
     data_df: List[Dict],
@@ -286,10 +311,19 @@ def create_barplot(
     """
     # Extra columns needed for the bar hover tooltip
     HOVER_COLS = [
-        "sre", "destination",
-        "agent_energetique_1", "quantite_agent_energetique_1", "unite_agent_energetique_1",
-        "agent_energetique_2", "quantite_agent_energetique_2", "unite_agent_energetique_2",
-        "date_debut_periode", "date_fin_periode",
+        "sre",
+        "destination",
+        "agent_energetique_1",
+        "quantite_agent_energetique_1",
+        "unite_agent_energetique_1",
+        "agent_energetique_2",
+        "quantite_agent_energetique_2",
+        "unite_agent_energetique_2",
+        "agent_energetique_3",
+        "quantite_agent_energetique_3",
+        "unite_agent_energetique_3",
+        "date_debut_periode",
+        "date_fin_periode",
     ]
     df = pl.from_dicts(data_df).select(
         ["adresse", "egid", "annee", "indice", "indice_moy3", "annees_concernees_moy_3"]
@@ -312,7 +346,9 @@ def create_barplot(
         return
 
     # Explicit Int32 dtype prevents a Null-type schema when the range is empty
-    years_df = pl.DataFrame({"annee": pl.Series(range(min_year, max_year + 1), dtype=pl.Int32)})
+    years_df = pl.DataFrame(
+        {"annee": pl.Series(range(min_year, max_year + 1), dtype=pl.Int32)}
+    )
 
     # Ensure join key types match (API may return Int64; cast to Int32 for consistency)
     df = df.with_columns(pl.col("annee").cast(pl.Int32))
@@ -320,7 +356,8 @@ def create_barplot(
     # Cross-join all (adresse, egid) pairs with all years, then left-join data.
     # Hover columns are carried through so px.bar can reference them via custom_data.
     df_full = (
-        df.select(["adresse", "egid"]).unique()
+        df.select(["adresse", "egid"])
+        .unique()
         .join(years_df, how="cross")
         .join(
             df.select(["adresse", "egid", "annee", "indice"] + HOVER_COLS),
@@ -329,33 +366,54 @@ def create_barplot(
         )
         .with_columns(pl.col("indice").fill_null(0))
         .sort(["annee", "adresse", "egid"])
-        .with_columns([
-            (pl.col("adresse") + " - " + pl.col("egid").cast(pl.Utf8)).alias("adresse_egid"),
-            pl.when(pl.col("indice") > 0)
-              .then(pl.col("indice").cast(pl.Int64).cast(pl.Utf8))
-              .otherwise(pl.lit(""))
-              .alias("text"),
-            # Format agent lines: "Gaz — 257835 kWh" or empty when null
-            pl.when(pl.col("agent_energetique_1").is_not_null())
-              .then(
-                  pl.col("agent_energetique_1") + " — "
-                  + pl.col("quantite_agent_energetique_1").cast(pl.Utf8) + " "
-                  + pl.col("unite_agent_energetique_1").fill_null("")
-              )
-              .otherwise(pl.lit(""))
-              .alias("agent_1_label"),
-            pl.when(pl.col("agent_energetique_2").is_not_null())
-              .then(
-                  pl.col("agent_energetique_2") + " — "
-                  + pl.col("quantite_agent_energetique_2").cast(pl.Utf8) + " "
-                  + pl.col("unite_agent_energetique_2").fill_null("")
-              )
-              .otherwise(pl.lit(""))
-              .alias("agent_2_label"),
-            # Format period as "2014-05-01 → 2015-04-30"
-            pl.col("date_debut_periode").cast(pl.Utf8).str.slice(0, 10).alias("debut"),
-            pl.col("date_fin_periode").cast(pl.Utf8).str.slice(0, 10).alias("fin"),
-        ])
+        .with_columns(
+            [
+                (pl.col("adresse") + " - " + pl.col("egid").cast(pl.Utf8)).alias(
+                    "adresse_egid"
+                ),
+                pl.when(pl.col("indice") > 0)
+                .then(pl.col("indice").cast(pl.Int64).cast(pl.Utf8))
+                .otherwise(pl.lit(""))
+                .alias("text"),
+                # Format agent lines: "Gaz — 257835 kWh" or empty when null
+                pl.when(pl.col("agent_energetique_1").is_not_null())
+                .then(
+                    pl.col("agent_energetique_1")
+                    + " — "
+                    + pl.col("quantite_agent_energetique_1").cast(pl.Utf8)
+                    + " "
+                    + pl.col("unite_agent_energetique_1").fill_null("")
+                )
+                .otherwise(pl.lit(""))
+                .alias("agent_1_label"),
+                pl.when(pl.col("agent_energetique_2").is_not_null())
+                .then(
+                    pl.col("agent_energetique_2")
+                    + " — "
+                    + pl.col("quantite_agent_energetique_2").cast(pl.Utf8)
+                    + " "
+                    + pl.col("unite_agent_energetique_2").fill_null("")
+                )
+                .otherwise(pl.lit(""))
+                .alias("agent_2_label"),
+                pl.when(pl.col("agent_energetique_3").is_not_null())
+                .then(
+                    pl.col("agent_energetique_3")
+                    + " — "
+                    + pl.col("quantite_agent_energetique_3").cast(pl.Utf8)
+                    + " "
+                    + pl.col("unite_agent_energetique_3").fill_null("")
+                )
+                .otherwise(pl.lit(""))
+                .alias("agent_3_label"),
+                # Format period as "2014-05-01 → 2015-04-30"
+                pl.col("date_debut_periode")
+                .cast(pl.Utf8)
+                .str.slice(0, 10)
+                .alias("debut"),
+                pl.col("date_fin_periode").cast(pl.Utf8).str.slice(0, 10).alias("fin"),
+            ]
+        )
     )
 
     # indice_moy3 series for the line overlay, filtered to selected year range
@@ -367,7 +425,9 @@ def create_barplot(
             & pl.col("indice_moy3").is_not_null()
         )
         .with_columns(
-            (pl.col("adresse") + " - " + pl.col("egid").cast(pl.Utf8)).alias("adresse_egid")
+            (pl.col("adresse") + " - " + pl.col("egid").cast(pl.Utf8)).alias(
+                "adresse_egid"
+            )
         )
         .select(["annee", "adresse_egid", "indice_moy3", "annees_concernees_moy_3"])
         .sort(["adresse_egid", "annee"])
@@ -377,16 +437,28 @@ def create_barplot(
     right_margin = longest_label * 8 + 25
 
     # custom_data index mapping (used in hovertemplate):
-    #   0: sre          1: destination   2: agent_1_label
-    #   3: agent_2_label 4: debut        5: fin
+    #   0: sre   1: destination   2: agent_1_label
+    #   3: agent_2_label   4: agent_3_label   5: debut   6: fin
     fig = px.bar(
         df_full,
         x="annee",
         y="indice",
         color="adresse_egid",
         barmode="group",
-        custom_data=["sre", "destination", "agent_1_label", "agent_2_label", "debut", "fin"],
-        labels={"annee": "Année", "indice": "Indice [MJ/m²]", "adresse_egid": "Adresse - EGID"},
+        custom_data=[
+            "sre",
+            "destination",
+            "agent_1_label",
+            "agent_2_label",
+            "agent_3_label",
+            "debut",
+            "fin",
+        ],
+        labels={
+            "annee": "Année",
+            "indice": "Indice [MJ/m²]",
+            "adresse_egid": "Adresse - EGID",
+        },
         title=f"Indice par Année et Adresse — {nom_projet}",
         text="text",
         height=450,
@@ -401,9 +473,10 @@ def create_barplot(
             "IDC : <b>%{y:.0f} MJ/m²</b><br>"
             "SRE : %{customdata[0]:.0f} m²<br>"
             "Destination : %{customdata[1]}<br>"
-            "Période : %{customdata[4]} → %{customdata[5]}<br>"
+            "Période : %{customdata[5]} → %{customdata[6]}<br>"
             "Agent 1 : %{customdata[2]}<br>"
             "Agent 2 : %{customdata[3]}<br>"
+            "Agent 3 : %{customdata[4]}<br>"
             "<extra></extra>"
         ),
     )
@@ -466,7 +539,10 @@ def create_barplot(
         },
         margin=dict(t=50, r=right_margin, b=50, l=50),
         legend=dict(
-            yanchor="top", y=1, xanchor="left", x=1,
+            yanchor="top",
+            y=1,
+            xanchor="left",
+            x=1,
             bgcolor="rgba(255, 255, 255, 0.8)",
             borderwidth=0,
         ),
@@ -491,12 +567,17 @@ def create_barplot(
             "displayModeBar": True,
             "displaylogo": False,
             "modeBarButtonsToRemove": [
-                "zoom2d", "pan2d", "select2d", "lasso2d",
-                "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d",
+                "zoom2d",
+                "pan2d",
+                "select2d",
+                "lasso2d",
+                "zoomIn2d",
+                "zoomOut2d",
+                "autoScale2d",
+                "resetScale2d",
             ],
         },
     )
-
 
 
 @st.cache_data
@@ -504,8 +585,6 @@ def get_adresses_egid() -> pl.DataFrame:
     """Load all address/EGID pairs from the local SQLite database."""
     conn = sqlite3.connect("adresses_egid.db")
     try:
-        return pl.read_database(
-            "SELECT * FROM adresses_egid ORDER BY adresse", conn
-        )
+        return pl.read_database("SELECT * FROM adresses_egid ORDER BY adresse", conn)
     finally:
         conn.close()
