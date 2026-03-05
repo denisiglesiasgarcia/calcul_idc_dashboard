@@ -293,7 +293,7 @@ def create_barplot(
       - Cross-join fill for missing years (no nested loops)
     """
     df = pl.from_dicts(data_df).select(
-        ["adresse", "egid", "annee", "indice", "sre", "indice_moy3"]
+        ["adresse", "egid", "annee", "indice", "sre", "indice_moy3", "annees_concernees_moy_3"]
     )
 
     # Year bounds: trim to actual data, optionally narrowed by sidebar filter
@@ -302,7 +302,20 @@ def create_barplot(
     min_year = max(year_range[0], data_min) if year_range else data_min
     max_year = min(year_range[1], data_max) if year_range else data_max
 
-    years_df = pl.DataFrame({"annee": list(range(min_year, max_year + 1))})
+    # Guard: if the selected period contains no data, show a warning and return early
+    if min_year > max_year:
+        st.warning(
+            f"Aucune donnée disponible pour la période sélectionnée "
+            f"({year_range[0]}–{year_range[1]}). "
+            f"Les données couvrent {data_min}–{data_max}."
+        )
+        return
+
+    # Explicit Int32 dtype prevents a Null-type schema when the range is empty
+    years_df = pl.DataFrame({"annee": pl.Series(range(min_year, max_year + 1), dtype=pl.Int32)})
+
+    # Ensure join key types match (API may return Int64; cast to Int32 for consistency)
+    df = df.with_columns(pl.col("annee").cast(pl.Int32))
 
     # Cross-join all (adresse, egid) pairs with all years, then left-join data
     df_full = (
@@ -325,6 +338,7 @@ def create_barplot(
     )
 
     # indice_moy3 series for the line overlay, filtered to selected year range
+    # annees_concernees_moy_3 is included so it can be shown in the hover tooltip
     df_moy3 = (
         df.filter(
             (pl.col("annee") >= min_year)
@@ -334,7 +348,7 @@ def create_barplot(
         .with_columns(
             (pl.col("adresse") + " - " + pl.col("egid").cast(pl.Utf8)).alias("adresse_egid")
         )
-        .select(["annee", "adresse_egid", "indice_moy3"])
+        .select(["annee", "adresse_egid", "indice_moy3", "annees_concernees_moy_3"])
         .sort(["adresse_egid", "annee"])
     )
 
@@ -355,7 +369,9 @@ def create_barplot(
 
     fig.update_traces(textposition="outside", texttemplate="%{text}", cliponaxis=False)
 
-    # Overlay indice_moy3 as a dashed line per building
+    # Overlay indice_moy3 as a dashed line per building.
+    # customdata carries annees_concernees_moy_3 so the hover shows which
+    # years are included in the rolling average (e.g. "2018, 2019, 2020").
     palette = px.colors.qualitative.Plotly
     for i, group_df in enumerate(
         df_moy3.partition_by("adresse_egid", maintain_order=True)
@@ -370,6 +386,13 @@ def create_barplot(
                 line=dict(dash="dash", color=palette[i % len(palette)], width=2),
                 marker=dict(size=6),
                 showlegend=True,
+                # Pass the years string as custom hover data
+                customdata=group_df["annees_concernees_moy_3"].to_list(),
+                hovertemplate=(
+                    "<b>Moy3</b>: %{y:.0f} MJ/m²<br>"
+                    "<b>Années incluses</b>: %{customdata}<br>"
+                    "<extra></extra>"
+                ),
             )
         )
 
