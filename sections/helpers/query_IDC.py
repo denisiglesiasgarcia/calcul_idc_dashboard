@@ -340,7 +340,7 @@ def create_barplot(
         .with_columns(
             (pl.col("adresse") + " - " + pl.col("egid").cast(pl.Utf8)).alias("adresse_egid")
         )
-        .select(["annee", "adresse_egid", "indice_moy3", "annees_concernees_moy_3"])
+        .select(["annee", "adresse_egid", "indice_moy3", "annees_concernees_moy_3", "sre"])
         .sort(["adresse_egid", "annee"])
     )
 
@@ -353,7 +353,7 @@ def create_barplot(
         y="indice",
         color="adresse_egid",
         barmode="group",
-        labels={"annee": "Année", "indice": "Indice [MJ/m²]", "adresse_egid": "Adresse - EGID"},
+        labels={"annee": "Année", "indice": "Indice [MJ/m²]", "adresse_egid": "Adresse - EGID", "sre": "SRE [m²]"},
         title=f"Indice par Année et Adresse — {nom_projet}",
         text="text",
         height=450,
