@@ -40,12 +40,17 @@ CURRENT_YEAR = datetime.now().year
 
 @st.cache_data
 def get_all_addresses(db_path: str = "adresses_egid.db") -> pl.DataFrame:
-    """Load address/EGID pairs from SQLite. Cached by Streamlit."""
+    """
+    Load unique address/EGID pairs from SQLite, sorted by address.
+
+    DISTINCT is a safety net against any legacy duplicates that may have
+    been inserted before the PRIMARY KEY constraint was enforced.
+    """
     abs_path = os.path.abspath(db_path)
     conn = sqlite3.connect(abs_path)
     try:
         return pl.read_database(
-            query="SELECT adresse, egid FROM adresses_egid ORDER BY adresse",
+            query="SELECT DISTINCT adresse, egid FROM adresses_egid ORDER BY adresse",
             connection=conn,
         )
     except Exception as e:
@@ -98,7 +103,7 @@ with st.sidebar:
                 progress_bar=progress_bar,
                 status_text=status_text,
             )
-            # Invalidate the address cache so the multiselect reloads
+            # Clear the single address cache so the multiselect reloads
             get_all_addresses.clear()
             progress_bar.empty()
             status_text.empty()

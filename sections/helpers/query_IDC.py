@@ -583,18 +583,6 @@ def create_barplot(
     )
 
 
-@st.cache_data
-def get_adresses_egid() -> pl.DataFrame:
-    """Load all address/EGID pairs from the local SQLite database."""
-    conn = sqlite3.connect("adresses_egid.db")
-    try:
-        return pl.read_database(
-            "SELECT * FROM adresses_egid ORDER BY adresse", conn
-        )
-    finally:
-        conn.close()
-
-
 def refresh_adresses_db(
     url: str,
     db_path: str = "adresses_egid.db",
@@ -603,8 +591,13 @@ def refresh_adresses_db(
     status_text=None,
 ) -> int:
     """
-    Fetch all unique address/EGID pairs from the SITG API and upsert them
-    into the local SQLite database.
+    Fetch all unique address/EGID pairs from the SITG API and rebuild the
+    local SQLite database from scratch.
+
+    Strategy: DROP + CREATE instead of DELETE to guarantee the PRIMARY KEY
+    constraint exists on every run, regardless of the previous schema.
+    INSERT OR IGNORE handles any duplicate (egid, adresse) pairs the API
+    may return within a single page or across pages.
 
     Args:
         url:          SITG API endpoint (same URL used for IDC queries).
@@ -643,29 +636,33 @@ def refresh_adresses_db(
         total_count = resp.json().get("count", 0)
         _status(f"{total_count} adresses trouvées — début du téléchargement...")
     except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
-        # Non-fatal: progress will show indeterminate (always at 0) but continue
         logging.warning(f"refresh_adresses_db → count request failed: {e}")
 
-    # --- Step 2: create/ensure table, then clear stale data ---
-    # DELETE all rows first so records removed from the API don't persist.
-    # Done inside a transaction: if the download fails mid-way, the ROLLBACK
-    # in the except block restores the previous data.
+    # --- Step 2: rebuild table from scratch ---
+    # DROP + CREATE ensures the PRIMARY KEY constraint is always present,
+    # even when upgrading from an older schema that lacked it.
+    # The entire operation runs in a single transaction: if the download
+    # fails mid-way, ROLLBACK restores the previous table intact.
     conn = sqlite3.connect(db_path)
+    conn.execute("DROP TABLE IF EXISTS adresses_egid")
     conn.execute("""
-        CREATE TABLE IF NOT EXISTS adresses_egid (
-            egid    INTEGER,
-            adresse TEXT,
+        CREATE TABLE adresses_egid (
+            egid    INTEGER NOT NULL,
+            adresse TEXT    NOT NULL,
             PRIMARY KEY (egid, adresse)
         )
     """)
+    # Index on adresse speeds up the ORDER BY in get_all_addresses()
+    conn.execute("""
+        CREATE INDEX idx_adresse ON adresses_egid (adresse)
+    """)
     conn.execute("BEGIN")
-    conn.execute("DELETE FROM adresses_egid")
-    _status("Table vidée — insertion des nouvelles données...")
+    _status("Table recréée — insertion des nouvelles données...")
 
     offset = 0
     total_saved = 0
 
-    # --- Step 3: paginate and upsert ---
+    # --- Step 3: paginate and insert ---
     while True:
         params = {
             "where": "1=1",
@@ -695,15 +692,15 @@ def refresh_adresses_db(
             if f["attributes"].get("adresse") and f["attributes"].get("egid")
         ]
 
+        # OR IGNORE: silently skip duplicates the API may return across pages
         conn.executemany(
-            "INSERT INTO adresses_egid (egid, adresse) VALUES (?, ?)",
+            "INSERT OR IGNORE INTO adresses_egid (egid, adresse) VALUES (?, ?)",
             records,
         )
 
         total_saved += len(records)
         offset += len(features)
 
-        # Update progress and status after each page
         progress_value = min(total_saved / total_count, 1.0) if total_count > 0 else 0.0
         _progress(progress_value)
         _status(
