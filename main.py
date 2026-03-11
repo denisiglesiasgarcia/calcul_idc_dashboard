@@ -37,6 +37,10 @@ URL_INDICE_MOYENNES_3_ANS = (
 
 CURRENT_YEAR = datetime.now().year
 
+# Persist address history across interactions (max 10 entries)
+if "address_history" not in st.session_state:
+    st.session_state["address_history"] = []
+
 
 @st.cache_data
 def get_all_addresses(db_path: str = "adresses_egid.db") -> pl.DataFrame:
@@ -112,12 +116,24 @@ with st.sidebar:
             progress_bar.empty()
             status_text.empty()
             st.error(f"Erreur lors de la mise à jour : {e}")
-
-    st.divider()
     st.caption(
         "Les données proviennent de la base SCANE_INDICE_MOYENNES_3_ANS "
         "du SITG (Genève)."
     )
+
+    st.divider()
+    st.subheader("Historique des adresses")
+
+    history: list[list[str]] = st.session_state["address_history"]
+    if not history:
+        st.caption("Aucune adresse consultée pour l'instant.")
+    else:
+        for i, entry in enumerate(reversed(history)):
+            label = ", ".join(a.split(" (")[0] for a in entry)  # strip EGID from label
+            if st.button(label, key=f"history_{i}", use_container_width=True):
+                # Pre-populate the multiselect by writing to its widget key
+                st.session_state["address_multiselect"] = entry
+                st.rerun()
 
 # ---------------------------------------------------------------------------------------
 # Main content
@@ -169,14 +185,19 @@ with tab3:
         options=display_options,
         default=[],
         placeholder="Sélectionner une ou plusieurs adresses...",
+        key="address_multiselect",
     )
 
     if selected_options:
         st.write(f"{len(selected_options)} adresse(s) sélectionnée(s)")
         selected_rows = [options_map[opt] for opt in selected_options]
         st.session_state["data_verif_idc"] = pl.DataFrame(selected_rows)
-    else:
-        st.warning("Sélectionner au moins une adresse pour continuer.")
+
+        # Update history — avoid duplicates, keep last 10
+        history = st.session_state["address_history"]
+        if selected_options not in history:
+            history.append(selected_options)
+            st.session_state["address_history"] = history[-10:]
 
     # ---------------------------------------------------------------------------------------
     try:
@@ -205,7 +226,9 @@ with tab3:
 
             if data_geometry and data_df:
                 if st.checkbox("Afficher la carte"):
-                    geojson_data, centroid = convert_geometry_for_streamlit(data_geometry)
+                    geojson_data, centroid = convert_geometry_for_streamlit(
+                        data_geometry
+                    )
                     show_map(geojson_data, centroid)
 
                 # KPI row
@@ -221,6 +244,8 @@ with tab3:
                 if st.checkbox("Afficher les données IDC"):
                     show_dataframe(data_df)
             else:
-                st.error("Pas de données disponibles pour le(s) EGID associé(s) à ce site.")
+                st.error(
+                    "Pas de données disponibles pour le(s) EGID associé(s) à ce site."
+                )
     except Exception as e:
         st.error(f"Une erreur est survenue lors de l'analyse : {e}")
