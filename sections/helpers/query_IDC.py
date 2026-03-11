@@ -254,20 +254,45 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
     if total_sre and total_sre > 0:
         idc_current = (df_latest["indice"] * df_latest["sre"]).sum() / total_sre
 
-        df_moy3 = df_latest.filter(pl.col("indice_moy3").is_not_null())
-        sre_moy3 = df_moy3["sre"].sum()
+        # For 3-year average: use the last available indice_moy3 per building
+        # (not just the latest year globally) so data gaps don't produce N/A.
+        df_last_moy3 = (
+            df.filter(pl.col("indice_moy3").is_not_null())
+            .sort(["egid", "annee"])
+            .group_by("egid")
+            .last()
+        )
+        sre_moy3 = df_last_moy3["sre"].sum()
         idc_moy3 = (
-            (df_moy3["indice_moy3"] * df_moy3["sre"]).sum() / sre_moy3
+            (df_last_moy3["indice_moy3"] * df_last_moy3["sre"]).sum() / sre_moy3
             if sre_moy3 and sre_moy3 > 0
             else None
         )
-        idc_moy3_years = df_latest["annees_concernees_moy_3"].drop_nulls().to_list()
+        idc_moy3_years = (
+            df_last_moy3["annees_concernees_moy_3"]
+            .drop_nulls()
+            .unique()
+            .sort()
+            .to_list()
+        )
     else:
         # Fallback to simple mean when SRE is missing
         idc_current = df_latest["indice"].mean()
-        idc_moy3_series = df_latest["indice_moy3"].drop_nulls()
+        df_last_moy3 = (
+            df.filter(pl.col("indice_moy3").is_not_null())
+            .sort(["egid", "annee"])
+            .group_by("egid")
+            .last()
+        )
+        idc_moy3_series = df_last_moy3["indice_moy3"]
         idc_moy3 = idc_moy3_series.mean() if len(idc_moy3_series) > 0 else None
-        idc_moy3_years = "N/A"
+        idc_moy3_years = (
+            df_last_moy3["annees_concernees_moy_3"]
+            .drop_nulls()
+            .unique()
+            .sort()
+            .to_list()
+        )
 
     delta_abs = idc_current - seuil
 
@@ -421,6 +446,7 @@ def create_barplot(
 
     # indice_moy3 series for the line overlay, filtered to selected year range
     # annees_concernees_moy_3 is included so it can be shown in the hover tooltip
+    # sre is included so it can be used for the SRE-weighted global average line
     df_moy3 = (
         df.filter(
             (pl.col("annee") >= min_year)
@@ -432,7 +458,7 @@ def create_barplot(
                 "adresse_egid"
             )
         )
-        .select(["annee", "adresse_egid", "indice_moy3", "annees_concernees_moy_3"])
+        .select(["annee", "adresse_egid", "indice_moy3", "annees_concernees_moy_3", "sre"])
         .sort(["adresse_egid", "annee"])
     )
 
@@ -509,6 +535,38 @@ def create_barplot(
                 hovertemplate=(
                     "<b>Moy3</b>: %{y:.0f} MJ/m²<br>"
                     "<b>Années incluses</b>: %{customdata}<br>"
+                    "<extra></extra>"
+                ),
+            )
+        )
+
+    # Add a single SRE-weighted average line across all buildings (only when
+    # more than one building is selected so the line brings added value).
+    n_buildings = df_moy3["adresse_egid"].n_unique()
+    if n_buildings > 1 and len(df_moy3) > 0:
+        df_moy3_avg = (
+            df_moy3.with_columns(pl.col("sre").cast(pl.Float64))
+            .group_by("annee")
+            .agg(
+                (
+                    (pl.col("indice_moy3") * pl.col("sre")).sum()
+                    / pl.col("sre").sum()
+                ).alias("moy3_tous_sites")
+            )
+            .sort("annee")
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=df_moy3_avg["annee"].to_list(),
+                y=df_moy3_avg["moy3_tous_sites"].to_list(),
+                mode="lines+markers",
+                name="Moy3 — Tous les sites",
+                line=dict(dash="longdash", color="black", width=3),
+                marker=dict(size=8, symbol="diamond"),
+                showlegend=True,
+                hovertemplate=(
+                    "<b>Moy3 tous sites</b>: %{y:.0f} MJ/m²<br>"
+                    "Année : %{x}<br>"
                     "<extra></extra>"
                 ),
             )
