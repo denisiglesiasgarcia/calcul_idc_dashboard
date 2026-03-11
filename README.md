@@ -1,15 +1,7 @@
-# Outil de calcul de l'IDC
+# Outil de visualisations des IDC
 
-Cet outil permet de calculer l'IDC pour un bâtiment.
+Cet outil permet d'analyser les IDC d'un ou plusieurs bâtiments
 
 ## TODO
 
-- Calcul IDC
-  - [ ] Selon adresse
-  - [ ] Préremplir données de SITG
-- [ ] Note de calcul
-- [ ] Historique IDC par adresse
-- [ ] Rapport PDF
-- [ ] Streamlit
-
-## Fait
+Améliorer le README
