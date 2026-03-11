@@ -4,3 +4,8 @@ secrets
 02_calcul_IDC.py
 03_dashboard_IDC.py
 Jupyter
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
