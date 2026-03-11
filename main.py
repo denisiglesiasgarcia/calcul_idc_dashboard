@@ -129,11 +129,18 @@ with st.sidebar:
         st.caption("Aucune adresse consultée pour l'instant.")
     else:
         for i, entry in enumerate(reversed(history)):
-            label = ", ".join(a.split(" (")[0] for a in entry)  # strip EGID from label
-            if st.button(label, key=f"history_{i}", use_container_width=True):
-                # Pre-populate the multiselect by writing to its widget key
-                st.session_state["address_multiselect"] = entry
-                st.rerun()
+            label = ", ".join(a.split(" (")[0] for a in entry)
+            col_label, col_del = st.columns([5, 1])
+            with col_label:
+                if st.button(label, key=f"history_{i}", use_container_width=True):
+                    st.session_state["address_multiselect"] = entry
+                    st.rerun()
+            with col_del:
+                if st.button("✕", key=f"history_del_{i}", use_container_width=True):
+                    # Reverse index back to forward index before deleting
+                    forward_index = len(history) - 1 - i
+                    st.session_state["address_history"].pop(forward_index)
+                    st.rerun()
 
 # ---------------------------------------------------------------------------------------
 # Main content
@@ -193,11 +200,11 @@ with tab3:
         selected_rows = [options_map[opt] for opt in selected_options]
         st.session_state["data_verif_idc"] = pl.DataFrame(selected_rows)
 
-        # Update history — avoid duplicates, keep last 10
+        # Update history — avoid duplicates, keep last 50
         history = st.session_state["address_history"]
         if selected_options not in history:
             history.append(selected_options)
-            st.session_state["address_history"] = history[-10:]
+            st.session_state["address_history"] = history[-50:]
 
     # ---------------------------------------------------------------------------------------
     try:
