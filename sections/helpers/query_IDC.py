@@ -358,26 +358,34 @@ def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
     st.caption(f"Agrégation de {n_egids} bâtiments — pondération par surface SRE")
 
     df_grouped = (
-        df_display
-        .with_columns([
-            pl.col("sre").cast(pl.Float64),
-            pl.col("indice").cast(pl.Float64),
-        ])
-        # SRE-weighted IDC per year: sum(indice * sre) / sum(sre)
-        .group_by("annee")
-        .agg([
-            (pl.col("indice") * pl.col("sre")).sum().alias("_indice_x_sre"),
-            pl.col("sre").sum().alias("sre_totale"),
-            pl.col("indice").min().alias("indice_min"),
-            pl.col("indice").max().alias("indice_max"),
-            pl.col("egid").n_unique().alias("n_batiments"),
-        ])
-        .with_columns(
-            (pl.col("_indice_x_sre") / pl.col("sre_totale")).round(0).cast(pl.Int64).alias("indice_pondere")
+            df_display
+            .with_columns([
+                pl.col("sre").cast(pl.Float64),
+                pl.col("indice").cast(pl.Float64),
+            ])
+            .group_by("annee")
+            .agg([
+                (pl.col("indice") * pl.col("sre")).sum().alias("_indice_x_sre"),
+                pl.col("sre").sum().alias("sre_totale"),
+                pl.col("indice").min().alias("indice_min"),
+                pl.col("indice").max().alias("indice_max"),
+                pl.col("egid").n_unique().alias("n_batiments"),
+            ])
+            .with_columns(
+                (pl.col("_indice_x_sre") / pl.col("sre_totale")).round(0).cast(pl.Int64).alias("indice_pondere")
+            )
+            .drop("_indice_x_sre")
+            .sort("annee")
+            .with_columns(
+                # Rolling mean over current + 2 previous years (min_periods=3 — null if < 3 years available)
+                pl.col("indice_pondere")
+                .cast(pl.Float64)
+                .rolling_mean(window_size=3, min_periods=3)
+                .round(0)
+                .cast(pl.Int64)
+                .alias("indice_moy3_calcule")
+            )
         )
-        .drop("_indice_x_sre")
-        .sort("annee")
-    )
 
     indice_max = int(df_grouped["indice_pondere"].max() or 1000)
 
@@ -393,6 +401,11 @@ def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
         "indice_min": st.column_config.NumberColumn(label="IDC min [MJ/m²]", format="%d"),
         "indice_max": st.column_config.NumberColumn(label="IDC max [MJ/m²]", format="%d"),
         "n_batiments": st.column_config.NumberColumn(label="Nb bâtiments", format="%d"),
+        "indice_moy3_calcule": st.column_config.NumberColumn(
+            label="Moy. 3 ans [MJ/m²]",
+            format="%d MJ/m²",
+            help="Moyenne pondérée SRE sur les 3 dernières années. Null si moins de 3 ans disponibles.",
+        ),
     }
 
     st.dataframe(
