@@ -740,6 +740,47 @@ def create_barplot(
             )
         )
 
+    # --- IDC pondéré agrégé (uniquement si plusieurs EGIDs) ---
+    n_egids = df["egid"].n_unique()
+    if n_egids >= 2:
+        df_pondere = (
+            df.filter(
+                (pl.col("annee") >= min_year) & (pl.col("annee") <= max_year)
+            )
+            .with_columns([
+                pl.col("sre").cast(pl.Float64),
+                pl.col("indice").cast(pl.Float64),
+            ])
+            .group_by("annee")
+            .agg([
+                (pl.col("indice") * pl.col("sre")).sum().alias("_indice_x_sre"),
+                pl.col("sre").sum().alias("_sre_total"),
+            ])
+            .with_columns(
+                (pl.col("_indice_x_sre") / pl.col("_sre_total")).round(0).alias("indice_pondere")
+            )
+            .drop(["_indice_x_sre", "_sre_total"])
+            .sort("annee")
+        )
+
+        fig.add_trace(
+            go.Scatter(
+                x=df_pondere["annee"].to_list(),
+                y=df_pondere["indice_pondere"].to_list(),
+                mode="lines+markers",
+                name="IDC pondéré SRE (agrégé)",
+                line=dict(dash="solid", color="black", width=2.5),
+                marker=dict(size=7, symbol="diamond"),
+                showlegend=True,
+                hovertemplate=(
+                    "<b>IDC pondéré SRE</b><br>"
+                    "Année : %{x}<br>"
+                    "IDC agrégé : <b>%{y:.0f} MJ/m²</b><br>"
+                    "<extra></extra>"
+                ),
+            )
+        )
+
     # Reference line at IDC threshold
     if seuil:
         fig.add_hline(
