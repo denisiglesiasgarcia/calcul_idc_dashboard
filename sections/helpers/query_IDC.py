@@ -18,7 +18,7 @@ import requests
 import streamlit as st
 from pyproj import Transformer
 
-from sections.helpers.save_excel_streamlit import display_dataframe_with_excel_download
+from sections.helpers.save_excel_streamlit import convert_df_to_excel
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -219,11 +219,11 @@ def show_map(data: List[Dict], centroid: Tuple[float, float]) -> None:
     st.pydeck_chart(deck)
 
 
-# sections/helpers/query_IDC.py
-
 DEFAULT_VISIBLE_COLS = [
-    "egid", "annee", "indice", "sre", "adresse", "destination",
+    "egid", "annee", "indice", "sre", "adresse",
     "agent_energetique_1", "quantite_agent_energetique_1", "unite_agent_energetique_1",
+    "agent_energetique_2", "quantite_agent_energetique_2", "unite_agent_energetique_2",
+    "agent_energetique_3", "quantite_agent_energetique_3", "unite_agent_energetique_3",
     "date_debut_periode", "date_fin_periode",
 ]
 
@@ -331,8 +331,13 @@ def show_dataframe(data: List[Dict], seuil: int = 450, year_range: tuple = None)
         hide_index=True,
     )
 
-    # --- Excel download ---
-    display_dataframe_with_excel_download(df_pd)
+    st.download_button(
+        label="📥 Télécharger Excel",
+        data=convert_df_to_excel(df_pd),
+        file_name="idc_data.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=False,
+    )
 
 
 def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
