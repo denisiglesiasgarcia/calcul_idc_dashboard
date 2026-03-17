@@ -727,7 +727,7 @@ def create_barplot(
                 y=group_df["indice_moy3"].to_list(),
                 mode="lines+markers",
                 name=f"Moy3 — {label}",
-                line=dict(dash="dash", color=palette[i % len(palette)], width=2),
+                line=dict(dash="dash", color=palette[i % len(palette)], width=1),
                 marker=dict(size=6),
                 showlegend=True,
                 # Pass the years string as custom hover data
