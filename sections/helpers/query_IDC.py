@@ -497,29 +497,50 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
 
     delta_abs = idc_current - seuil
 
-    col1, col2, col3 = st.columns(3)
+    if seuil > 0:
+        col1, col2, col3 = st.columns(3)
 
-    with col1:
-        st.metric(
-            label=f"IDC ({latest_year})",
-            value=f"{idc_current:.0f} MJ/m²",
-            delta=f"{delta_abs:+.0f} MJ/m² vs seuil",
-            # red when above threshold (inverse: positive delta = bad)
-            delta_color="inverse",
-        )
-    with col2:
-        st.metric(
-            label=f"Moy. 3 ans ({', '.join(idc_moy3_years) if idc_moy3_years else 'N/A'})",
-            value=f"{idc_moy3:.0f} MJ/m²" if idc_moy3 is not None else "N/A",
-            help="Valeur indice_moy3 issue de la base SITG, pondérée par SRE.",
-        )
-    with col3:
-        st.metric(
-            label="Seuil de référence",
-            value=f"{seuil} MJ/m²",
-            help="Seuil indicatif configurable dans la barre latérale.",
-        )
+        with col1:
+            st.metric(
+                label=f"IDC pondéré ({latest_year})",
+                value=f"{idc_current:.0f} MJ/m²",
+                delta=f"{delta_abs:+.0f} MJ/m² vs seuil",
+                # red when above threshold (inverse: positive delta = bad)
+                delta_color="inverse",
+            )
+        with col2:
+            st.metric(
+                label=f"Moy. 3 ans ({', '.join(idc_moy3_years) if idc_moy3_years else 'N/A'})",
+                value=f"{idc_moy3:.0f} MJ/m²" if idc_moy3 is not None else "N/A",
+                help="Valeur indice_moy3 issue de la base SITG, pondérée par SRE.",
+            )
+        with col3:
+            st.metric(
+                label="Seuil de référence",
+                value=f"{seuil} MJ/m²",
+                help="Seuil indicatif configurable dans la barre latérale.",
+            )
+    if seuil == 0:
+        col1, col2 = st.columns(2)
 
+        with col1:
+            st.metric(
+                label=f"IDC pondéré ({latest_year})",
+                value=f"{idc_current:.0f} MJ/m²",
+                delta=f"{delta_abs:+.0f} MJ/m² vs seuil",
+                # red when above threshold (inverse: positive delta = bad)
+                delta_color="inverse",
+            )
+        with col2:
+            st.metric(
+                label=f"Moy. 3 ans ({', '.join(idc_moy3_years) if idc_moy3_years else 'N/A'})",
+                value=f"{idc_moy3:.0f} MJ/m²" if idc_moy3 is not None else "N/A",
+                help="Valeur indice_moy3 issue de la base SITG, pondérée par SRE.",
+            )
+    else:
+        st.warning(
+            "Seuil doit être supérieur ou égal à 0"
+        )
 
 @st.cache_data
 def create_barplot(
