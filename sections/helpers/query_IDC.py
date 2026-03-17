@@ -336,7 +336,7 @@ def show_dataframe(data: List[Dict], seuil: int = 450, year_range: tuple = None)
     )
 
     st.download_button(
-        label="📥 Télécharger idc_data.xlsx"
+        label="📥 Télécharger idc_data.xlsx",
         data=convert_df_to_excel(df_pd),
         file_name="idc_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
