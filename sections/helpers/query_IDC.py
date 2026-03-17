@@ -542,7 +542,6 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
             "Seuil doit être supérieur ou égal à 0"
         )
 
-@st.cache_data
 def create_barplot(
     data_df: List[Dict],
     nom_projet: str,
