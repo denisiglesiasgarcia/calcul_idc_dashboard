@@ -385,6 +385,32 @@ def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
                 .cast(pl.Int64)
                 .alias("indice_moy3_calcule")
             )
+            .sort("annee")
+            .with_columns(
+                pl.col("indice_pondere")
+                .cast(pl.Float64)
+                .rolling_mean(window_size=3, min_periods=3)
+                .round(0)
+                .cast(pl.Int64)
+                .alias("indice_moy3_calcule")
+            )
+            .with_columns([
+                # Retrieve the 2 preceding years for the label
+                pl.col("annee").shift(2).alias("_y2"),
+                pl.col("annee").shift(1).alias("_y1"),
+            ])
+            .with_columns(
+                # Only populate when rolling mean is valid (3 years available)
+                pl.when(pl.col("indice_moy3_calcule").is_not_null())
+                .then(
+                    pl.col("_y2").cast(pl.Utf8) + ", "
+                    + pl.col("_y1").cast(pl.Utf8) + ", "
+                    + pl.col("annee").cast(pl.Utf8)
+                )
+                .otherwise(pl.lit(None))
+                .alias("annees_concernees_moy3_calcule")
+            )
+            .drop(["_y2", "_y1"])
         )
 
     indice_max = int(df_grouped["indice_pondere"].max() or 1000)
@@ -404,7 +430,11 @@ def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
         "indice_moy3_calcule": st.column_config.NumberColumn(
             label="Moy. 3 ans [MJ/m²]",
             format="%d MJ/m²",
-            help="Moyenne pondérée SRE sur les 3 dernières années. Null si moins de 3 ans disponibles.",
+            help="Moyenne pondérée SRE sur 3 ans. Null si moins de 3 ans disponibles.",
+        ),
+        "annees_concernees_moy3_calcule": st.column_config.TextColumn(
+            label="Années moy. 3 ans",
+            help="Les 3 années incluses dans le calcul de la moyenne glissante.",
         ),
     }
 
@@ -413,6 +443,14 @@ def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
         column_config=col_cfg,
         use_container_width=True,
         hide_index=True,
+    )
+
+    st.download_button(
+        label="📥 Télécharger Excel",
+        data=convert_df_to_excel(df_grouped.to_pandas()),
+        file_name="idc_grouped_by_year.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=False,
     )
 
 def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
