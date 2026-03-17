@@ -249,7 +249,7 @@ with tab3:
                 create_barplot(data_df, title, seuil=seuil, year_range=year_range)
 
                 if st.checkbox("Afficher les données IDC"):
-                    show_dataframe(data_df)
+                    show_dataframe(data_df, seuil=seuil)
             else:
                 st.error(
                     "Pas de données disponibles pour le(s) EGID associé(s) à ce site."

@@ -219,12 +219,118 @@ def show_map(data: List[Dict], centroid: Tuple[float, float]) -> None:
     st.pydeck_chart(deck)
 
 
-def show_dataframe(data: List[Dict]) -> None:
-    """Display IDC data table with Excel download.
-    Columns are already ordered and deduplicated by fetch_idc_data().
+# sections/helpers/query_IDC.py
+
+DEFAULT_VISIBLE_COLS = [
+    "egid", "annee", "indice", "sre", "adresse", "destination",
+    "agent_energetique_1", "quantite_agent_energetique_1", "unite_agent_energetique_1",
+    "date_debut_periode", "date_fin_periode",
+]
+
+def show_dataframe(data: List[Dict], seuil: int = 450) -> None:
+    """
+    Display IDC data with filters, column config, and Excel download.
+    - Filters: year, destination, energy carrier
+    - column_config: progress bar for IDC, date formatting, number formatting
+    - Conditional row highlighting via a dedicated style column
     """
     df = pl.from_dicts(data)
-    display_dataframe_with_excel_download(df.to_pandas())
+
+    # --- Filter widgets (3 columns) ---
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        years = sorted(df["annee"].drop_nulls().unique().to_list())
+        selected_years = st.multiselect(
+            "Années", options=years, default=years, key="df_filter_years"
+        )
+
+    with col2:
+        destinations = sorted(df["destination"].drop_nulls().unique().to_list())
+        selected_dest = st.multiselect(
+            "Destination", options=destinations, default=destinations, key="df_filter_dest"
+        )
+
+    with col3:
+        agents = sorted(df["agent_energetique_1"].drop_nulls().unique().to_list())
+        selected_agents = st.multiselect(
+            "Agent énergétique 1", options=agents, default=agents, key="df_filter_agent"
+        )
+
+    # --- Apply filters ---
+    df_filtered = df.filter(
+        pl.col("annee").is_in(selected_years)
+        & pl.col("destination").is_in(selected_dest)
+        & pl.col("agent_energetique_1").is_in(selected_agents)
+    )
+
+    # --- Column visibility toggle ---
+    show_all = st.checkbox("Afficher toutes les colonnes", value=False, key="df_show_all")
+    cols_to_show = df_filtered.columns if show_all else [
+        c for c in DEFAULT_VISIBLE_COLS if c in df_filtered.columns
+    ]
+    df_display = df_filtered.select(cols_to_show)
+
+    # --- Summary row count ---
+    st.caption(f"{len(df_filtered):,} ligne(s) affichée(s) sur {len(df):,}")
+
+    # --- column_config: IDC as progress bar, dates formatted, SRE as number ---
+    indice_max = int(df["indice"].drop_nulls().max() or 1000)
+
+    col_cfg = {
+        "indice": st.column_config.ProgressColumn(
+            label="IDC [MJ/m²]",
+            min_value=0,
+            max_value=max(indice_max, seuil),
+            format="%d MJ/m²",
+        ),
+        "sre": st.column_config.NumberColumn(
+            label="SRE [m²]", format="%.0f m²"
+        ),
+        "date_debut_periode": st.column_config.DateColumn(
+            label="Début période", format="DD.MM.YYYY"
+        ),
+        "date_fin_periode": st.column_config.DateColumn(
+            label="Fin période", format="DD.MM.YYYY"
+        ),
+        "date_saisie": st.column_config.DateColumn(
+            label="Date saisie", format="DD.MM.YYYY"
+        ),
+        "annee": st.column_config.NumberColumn(label="Année", format="%d"),
+        "indice_moy3": st.column_config.NumberColumn(
+            label="IDC moy. 3 ans", format="%.0f MJ/m²"
+        ),
+        "quantite_agent_energetique_1": st.column_config.NumberColumn(
+            label="Qté agent 1", format="%.0f"
+        ),
+        "quantite_agent_energetique_2": st.column_config.NumberColumn(
+            label="Qté agent 2", format="%.0f"
+        ),
+        "quantite_agent_energetique_3": st.column_config.NumberColumn(
+            label="Qté agent 3", format="%.0f"
+        ),
+    }
+
+    # --- Highlight rows above seuil via pandas styler ---
+    df_pd = df_display.to_pandas()
+
+    def highlight_seuil(row):
+        """Red background for rows where IDC exceeds the threshold."""
+        if "indice" in row.index and row["indice"] > seuil:
+            return ["background-color: #fdd" for _ in row]
+        return ["" for _ in row]
+
+    styled = df_pd.style.apply(highlight_seuil, axis=1)
+
+    st.dataframe(
+        styled,
+        column_config=col_cfg,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    # --- Excel download ---
+    display_dataframe_with_excel_download(df_pd)
 
 
 def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
