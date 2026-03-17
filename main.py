@@ -79,7 +79,7 @@ with st.sidebar:
         label="Seuil IDC de référence [MJ/m²]",
         min_value=0,
         max_value=2000,
-        value=450,
+        value=0,
         step=10,
         help=(
             "Seuil indicatif pour l'évaluation de la conformité énergétique. "
