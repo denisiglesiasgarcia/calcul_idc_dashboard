@@ -723,7 +723,7 @@ def create_barplot(
         label = group_df["adresse_egid"][0]
         fig.add_trace(
             go.Scatter(
-                x=group_df["annee"].to_list(),
+                x=group_df["annee"].cast(pl.Utf8).to_list(),
                 y=group_df["indice_moy3"].to_list(),
                 mode="lines+markers",
                 name=f"Moy3 — {label}",
@@ -765,7 +765,7 @@ def create_barplot(
 
         fig.add_trace(
             go.Scatter(
-                x=df_pondere["annee"].to_list(),
+                x=df_pondere["annee"].cast(pl.Utf8).to_list(), 
                 y=df_pondere["indice_pondere"].to_list(),
                 mode="lines+markers",
                 name="IDC pondéré SRE (agrégé)",
