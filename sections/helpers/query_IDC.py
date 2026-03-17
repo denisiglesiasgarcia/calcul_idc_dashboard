@@ -227,41 +227,43 @@ DEFAULT_VISIBLE_COLS = [
     "date_debut_periode", "date_fin_periode",
 ]
 
-def show_dataframe(data: List[Dict], seuil: int = 450) -> None:
+def show_dataframe(data: List[Dict], seuil: int = 450, year_range: tuple = None) -> None:
     """
     Display IDC data with filters, column config, and Excel download.
-    - Filters: year, destination, energy carrier
-    - column_config: progress bar for IDC, date formatting, number formatting
-    - Conditional row highlighting via a dedicated style column
+    Year filter is driven by the sidebar year_range parameter.
     """
     df = pl.from_dicts(data)
 
-    # --- Filter widgets (3 columns) ---
+    # --- Apply sidebar year filter first ---
+    if year_range:
+        df = df.filter(
+            pl.col("annee").is_between(year_range[0], year_range[1])
+        )
+
+    # --- Filter widgets: 3 energy carriers ---
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        years = sorted(df["annee"].drop_nulls().unique().to_list())
-        selected_years = st.multiselect(
-            "Années", options=years, default=years, key="df_filter_years"
+        agents1 = sorted(df["agent_energetique_1"].drop_nulls().unique().to_list())
+        selected_a1 = st.multiselect(
+            "Agent énergétique 1", options=agents1, default=agents1, key="df_filter_agent1"
         )
-
     with col2:
-        destinations = sorted(df["destination"].drop_nulls().unique().to_list())
-        selected_dest = st.multiselect(
-            "Destination", options=destinations, default=destinations, key="df_filter_dest"
+        agents2 = sorted(df["agent_energetique_2"].drop_nulls().unique().to_list())
+        selected_a2 = st.multiselect(
+            "Agent énergétique 2", options=agents2, default=agents2, key="df_filter_agent2"
         )
-
     with col3:
-        agents = sorted(df["agent_energetique_1"].drop_nulls().unique().to_list())
-        selected_agents = st.multiselect(
-            "Agent énergétique 1", options=agents, default=agents, key="df_filter_agent"
+        agents3 = sorted(df["agent_energetique_3"].drop_nulls().unique().to_list())
+        selected_a3 = st.multiselect(
+            "Agent énergétique 3", options=agents3, default=agents3, key="df_filter_agent3"
         )
 
-    # --- Apply filters ---
+    # Null-safe filter: rows with null agent pass through when no selection excludes them
     df_filtered = df.filter(
-        pl.col("annee").is_in(selected_years)
-        & pl.col("destination").is_in(selected_dest)
-        & pl.col("agent_energetique_1").is_in(selected_agents)
+        (pl.col("agent_energetique_1").is_null() | pl.col("agent_energetique_1").is_in(selected_a1))
+        & (pl.col("agent_energetique_2").is_null() | pl.col("agent_energetique_2").is_in(selected_a2))
+        & (pl.col("agent_energetique_3").is_null() | pl.col("agent_energetique_3").is_in(selected_a3))
     )
 
     # --- Column visibility toggle ---
@@ -621,7 +623,7 @@ def create_barplot(
         )
 
     # Reference line at IDC threshold
-    if seuil is not None:
+    if seuil:
         fig.add_hline(
             y=seuil,
             line_dash="dot",
