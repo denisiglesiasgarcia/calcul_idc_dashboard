@@ -321,8 +321,8 @@ def show_dataframe(data: List[Dict], seuil: int = 450, year_range: tuple = None)
     df_pd = df_display.to_pandas()
 
     def highlight_seuil(row):
-        """Red background for rows where IDC exceeds the threshold."""
-        if "indice" in row.index and row["indice"] > seuil:
+        """Red background only when IDC exceeds seuil and seuil is non-zero."""
+        if seuil > 0 and "indice" in row.index and row["indice"] > seuil:
             return ["background-color: #fdd" for _ in row]
         return ["" for _ in row]
 
@@ -336,7 +336,7 @@ def show_dataframe(data: List[Dict], seuil: int = 450, year_range: tuple = None)
     )
 
     st.download_button(
-        label="📥 Télécharger Excel",
+        label="📥 Télécharger idc_data.xlsx"
         data=convert_df_to_excel(df_pd),
         file_name="idc_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -446,7 +446,7 @@ def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
     )
 
     st.download_button(
-        label="📥 Télécharger Excel",
+        label="📥 Télécharger idc_grouped_by_year.xlsx"
         data=convert_df_to_excel(df_grouped.to_pandas()),
         file_name="idc_grouped_by_year.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
