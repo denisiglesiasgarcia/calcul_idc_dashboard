@@ -785,14 +785,14 @@ def create_barplot(
         )
 
         fig.add_trace(
-            go.Bar(
-                x=df_pondere["annee"].cast(pl.Utf8).to_list(),
+            go.Scatter(
+                x=df_pondere["annee"].cast(pl.Utf8).to_list(), 
                 y=df_pondere["indice_pondere"].to_list(),
+                mode="lines+markers",
                 name="IDC pondéré SRE (agrégé)",
-                marker_color="black",
-                opacity=0.7,
-                text=df_pondere["indice_pondere"].cast(pl.Int64).cast(pl.Utf8).to_list(),
-                textposition="outside",
+                line=dict(dash="dash", color="black", width=1),
+                marker=dict(size=6, symbol="diamond", color="black"),
+                showlegend=True,
                 hovertemplate=(
                     "<b>IDC pondéré SRE</b><br>"
                     "Année : %{x}<br>"
