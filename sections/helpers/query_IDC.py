@@ -219,57 +219,61 @@ def show_map(data: List[Dict], centroid: Tuple[float, float]) -> None:
     st.pydeck_chart(deck)
 
 
-DEFAULT_VISIBLE_COLS = [
-    "egid", "annee", "indice", "sre", "adresse",
-    "agent_energetique_1", "quantite_agent_energetique_1", "unite_agent_energetique_1",
-    "agent_energetique_2", "quantite_agent_energetique_2", "unite_agent_energetique_2",
-    "agent_energetique_3", "quantite_agent_energetique_3", "unite_agent_energetique_3",
-    "date_debut_periode", "date_fin_periode",
-]
-
 def show_dataframe(data: List[Dict], seuil: int = 450, year_range: tuple = None) -> None:
-    """
-    Display IDC data with filters, column config, and Excel download.
-    Year filter is driven by the sidebar year_range parameter.
-    """
     df = pl.from_dicts(data)
 
-    # --- Apply sidebar year filter first ---
     if year_range:
-        df = df.filter(
-            pl.col("annee").is_between(year_range[0], year_range[1])
-        )
+        df = df.filter(pl.col("annee").is_between(year_range[0], year_range[1]))
 
-    # --- Filter widgets: 3 energy carriers ---
-    col1, col2, col3 = st.columns(3)
+    # --- Detect which agent columns have actual data ---
+    has_agent2 = df["agent_energetique_2"].drop_nulls().len() > 0
+    has_agent3 = df["agent_energetique_3"].drop_nulls().len() > 0
 
-    with col1:
+    # --- Filter widgets: only show agents with data ---
+    active_filters = st.columns(1 + has_agent2 + has_agent3)
+
+    with active_filters[0]:
         agents1 = sorted(df["agent_energetique_1"].drop_nulls().unique().to_list())
         selected_a1 = st.multiselect(
             "Agent énergétique 1", options=agents1, default=agents1, key="df_filter_agent1"
         )
-    with col2:
-        agents2 = sorted(df["agent_energetique_2"].drop_nulls().unique().to_list())
-        selected_a2 = st.multiselect(
-            "Agent énergétique 2", options=agents2, default=agents2, key="df_filter_agent2"
-        )
-    with col3:
-        agents3 = sorted(df["agent_energetique_3"].drop_nulls().unique().to_list())
-        selected_a3 = st.multiselect(
-            "Agent énergétique 3", options=agents3, default=agents3, key="df_filter_agent3"
-        )
 
-    # Null-safe filter: rows with null agent pass through when no selection excludes them
+    selected_a2, selected_a3 = [], []
+
+    if has_agent2:
+        with active_filters[1]:
+            agents2 = sorted(df["agent_energetique_2"].drop_nulls().unique().to_list())
+            selected_a2 = st.multiselect(
+                "Agent énergétique 2", options=agents2, default=agents2, key="df_filter_agent2"
+            )
+
+    if has_agent3:
+        with active_filters[1 + has_agent2]:
+            agents3 = sorted(df["agent_energetique_3"].drop_nulls().unique().to_list())
+            selected_a3 = st.multiselect(
+                "Agent énergétique 3", options=agents3, default=agents3, key="df_filter_agent3"
+            )
+
+    # Null-safe filter — agents without data are skipped entirely
     df_filtered = df.filter(
-        (pl.col("agent_energetique_1").is_null() | pl.col("agent_energetique_1").is_in(selected_a1))
-        & (pl.col("agent_energetique_2").is_null() | pl.col("agent_energetique_2").is_in(selected_a2))
-        & (pl.col("agent_energetique_3").is_null() | pl.col("agent_energetique_3").is_in(selected_a3))
+        pl.col("agent_energetique_1").is_in(selected_a1)
+        & (pl.col("agent_energetique_2").is_null() | (pl.col("agent_energetique_2").is_in(selected_a2) if selected_a2 else pl.lit(True)))
+        & (pl.col("agent_energetique_3").is_null() | (pl.col("agent_energetique_3").is_in(selected_a3) if selected_a3 else pl.lit(True)))
     )
+
+    # --- Build visible columns dynamically based on available data ---
+    base_cols = ["egid", "annee", "indice", "sre", "adresse",
+                 "agent_energetique_1", "quantite_agent_energetique_1", "unite_agent_energetique_1"]
+    if has_agent2:
+        base_cols += ["agent_energetique_2", "quantite_agent_energetique_2", "unite_agent_energetique_2"]
+    if has_agent3:
+        base_cols += ["agent_energetique_3", "quantite_agent_energetique_3", "unite_agent_energetique_3"]
+    base_cols += ["date_debut_periode", "date_fin_periode"]
 
     # --- Column visibility toggle ---
     show_all = st.checkbox("Afficher toutes les colonnes", value=False, key="df_show_all")
     cols_to_show = df_filtered.columns if show_all else [
-        c for c in DEFAULT_VISIBLE_COLS if c in df_filtered.columns
+        c for c in base_cols if c in df_filtered.columns
     ]
     df_display = df_filtered.select(cols_to_show)
 
