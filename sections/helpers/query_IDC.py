@@ -446,7 +446,7 @@ def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
     )
 
     st.download_button(
-        label="📥 Télécharger idc_grouped_by_year.xlsx"
+        label="📥 Télécharger idc_grouped_by_year.xlsx",
         data=convert_df_to_excel(df_grouped.to_pandas()),
         file_name="idc_grouped_by_year.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
