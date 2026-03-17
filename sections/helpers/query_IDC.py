@@ -343,6 +343,64 @@ def show_dataframe(data: List[Dict], seuil: int = 450, year_range: tuple = None)
         use_container_width=False,
     )
 
+    _show_groupby_annee(df_display, seuil)
+
+def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
+    """
+    Second table — SRE-weighted IDC aggregated by year across all selected buildings.
+    Only shown when multiple EGIDs are present in the filtered data.
+    """
+    n_egids = df_display["egid"].n_unique()
+    if n_egids < 2:
+        return
+
+    st.subheader("IDC agrégé par année (pondéré SRE)")
+    st.caption(f"Agrégation de {n_egids} bâtiments — pondération par surface SRE")
+
+    df_grouped = (
+        df_display
+        .with_columns([
+            pl.col("sre").cast(pl.Float64),
+            pl.col("indice").cast(pl.Float64),
+        ])
+        # SRE-weighted IDC per year: sum(indice * sre) / sum(sre)
+        .group_by("annee")
+        .agg([
+            (pl.col("indice") * pl.col("sre")).sum().alias("_indice_x_sre"),
+            pl.col("sre").sum().alias("sre_totale"),
+            pl.col("indice").min().alias("indice_min"),
+            pl.col("indice").max().alias("indice_max"),
+            pl.col("egid").n_unique().alias("n_batiments"),
+        ])
+        .with_columns(
+            (pl.col("_indice_x_sre") / pl.col("sre_totale")).round(0).cast(pl.Int64).alias("indice_pondere")
+        )
+        .drop("_indice_x_sre")
+        .sort("annee")
+    )
+
+    indice_max = int(df_grouped["indice_pondere"].max() or 1000)
+
+    col_cfg = {
+        "annee": st.column_config.NumberColumn(label="Année", format="%d"),
+        "indice_pondere": st.column_config.ProgressColumn(
+            label="IDC pondéré [MJ/m²]",
+            min_value=0,
+            max_value=max(indice_max, seuil),
+            format="%d MJ/m²",
+        ),
+        "sre_totale": st.column_config.NumberColumn(label="SRE totale [m²]", format="%.0f m²"),
+        "indice_min": st.column_config.NumberColumn(label="IDC min [MJ/m²]", format="%d"),
+        "indice_max": st.column_config.NumberColumn(label="IDC max [MJ/m²]", format="%d"),
+        "n_batiments": st.column_config.NumberColumn(label="Nb bâtiments", format="%d"),
+    }
+
+    st.dataframe(
+        df_grouped.to_pandas(),
+        column_config=col_cfg,
+        use_container_width=True,
+        hide_index=True,
+    )
 
 def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
     """
