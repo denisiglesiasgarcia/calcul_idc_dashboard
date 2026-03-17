@@ -769,7 +769,7 @@ def create_barplot(
                 y=df_pondere["indice_pondere"].to_list(),
                 mode="lines+markers",
                 name="IDC pondéré SRE (agrégé)",
-                line=dict(dash="dash", color="black", width=2.5),
+                line=dict(dash="dash", color="black", width=1),
                 marker=dict(size=6),
                 showlegend=True,
                 hovertemplate=(
