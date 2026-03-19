@@ -202,10 +202,12 @@ with tab3:
         for row in df_addresses.to_dicts()
     }
 
+    if "address_multiselect" not in st.session_state:
+        st.session_state["address_multiselect"] = []
+
     selected_options = st.multiselect(
         label="Adresse",
         options=display_options,
-        default=[],
         placeholder="Sélectionner une ou plusieurs adresses...",
         key="address_multiselect",
     )
