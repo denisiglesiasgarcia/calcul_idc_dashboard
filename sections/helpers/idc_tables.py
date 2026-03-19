@@ -184,6 +184,9 @@ def show_dataframe(
     st.subheader("Agents énergétiques par année")
     show_energy_agents_table(data, year_range=year_range)
 
+    st.subheader("Surface de référence (SRE) par année")
+    show_sre_table(data, year_range=year_range)
+
 
 def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
     """
@@ -345,6 +348,41 @@ def show_energy_agents_table(
 
     st.caption(
         "Agent énergétique principal (agent_energetique_1) par année. "
+        "Une cellule vide indique absence de données pour cette année."
+    )
+    st.dataframe(df_pivot, use_container_width=True, hide_index=True)
+
+def show_sre_table(
+    data_df: List[Dict],
+    year_range: Optional[Tuple[int, int]] = None,
+) -> None:
+    """
+    Affiche une matrice année × bâtiment montrant la surface de référence (SRE).
+    Permet de détecter rapidement les changements de vecteur énergétique.
+    """
+    df = pl.from_dicts(data_df)
+
+    if year_range:
+        df = df.filter(pl.col("annee").is_between(year_range[0], year_range[1]))
+
+    df = df.with_columns(
+        (pl.col("adresse") + " - " + pl.col("egid").cast(pl.Utf8)).alias("adresse_egid")
+    ).select(["adresse_egid", "annee", "sre"])
+
+    # Pivot : lignes = bâtiment, colonnes = année
+    df_pivot = df.pivot(
+        index="adresse_egid", on="annee", values="sre"
+    ).sort("adresse_egid")
+
+    # Colonnes année triées chronologiquement
+    year_cols = sorted(
+        [c for c in df_pivot.columns if c != "adresse_egid"],
+        key=lambda x: int(x),
+    )
+    df_pivot = df_pivot.select(["adresse_egid"] + year_cols)
+
+    st.caption(
+        "Surface de référence (SRE) par année. "
         "Une cellule vide indique absence de données pour cette année."
     )
     st.dataframe(df_pivot, use_container_width=True, hide_index=True)
