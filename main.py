@@ -6,15 +6,11 @@ from datetime import datetime
 import polars as pl
 import streamlit as st
 
-from sections.helpers.query_IDC import (
-    convert_geometry_for_streamlit,
-    create_barplot,
-    fetch_idc_data,
-    refresh_adresses_db,
-    show_dataframe,
-    show_kpis,
-    show_map,
-)
+from sections.helpers.db import refresh_adresses_db
+from sections.helpers.idc_api import fetch_idc_data
+from sections.helpers.idc_geo import convert_geometry_for_streamlit, show_map
+from sections.helpers.idc_charts import create_barplot
+from sections.helpers.idc_tables import show_kpis, show_dataframe
 
 st.set_page_config(
     layout="wide",
@@ -209,7 +205,8 @@ with tab3:
             egids_input = {t.strip() for t in tokens if t.strip()}
 
             matched = [
-                opt for opt in display_options
+                opt
+                for opt in display_options
                 if options_map[opt]["egid"] in egids_input
             ]
             not_found = egids_input - {options_map[opt]["egid"] for opt in matched}
