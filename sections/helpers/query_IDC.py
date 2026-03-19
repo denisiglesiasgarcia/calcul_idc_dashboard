@@ -631,8 +631,6 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
             st.metric(
                 label=f"IDC pondéré ({latest_year})",
                 value=f"{idc_current:.0f} MJ/m²",
-                delta=f"{delta_abs:+.0f} MJ/m² vs seuil",
-                # red when above threshold (inverse: positive delta = bad)
                 delta_color="inverse",
             )
         with col2:
