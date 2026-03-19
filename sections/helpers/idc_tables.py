@@ -14,6 +14,7 @@ logging.basicConfig(level=logging.DEBUG)
 def show_dataframe(
     data: List[Dict], seuil: int = 450, year_range: tuple = None
 ) -> None:
+    st.subheader("Données IDC")
     df = pl.from_dicts(data)
 
     if year_range:
