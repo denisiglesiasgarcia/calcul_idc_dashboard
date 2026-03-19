@@ -6,7 +6,12 @@ from datetime import datetime
 import polars as pl
 import streamlit as st
 
-from sections.helpers.db import refresh_adresses_db
+from sections.helpers.db import (
+    init_history_table,
+    save_history_entry,
+    load_history,
+    delete_history_entry,
+)
 from sections.helpers.idc_api import fetch_idc_data
 from sections.helpers.idc_geo import convert_geometry_for_streamlit, show_map
 from sections.helpers.idc_charts import create_barplot
@@ -33,9 +38,8 @@ URL_INDICE_MOYENNES_3_ANS = (
 
 CURRENT_YEAR = datetime.now().year
 
-# Persist address history across interactions (max 10 entries)
-if "address_history" not in st.session_state:
-    st.session_state["address_history"] = []
+# Init DB au démarrage, session_state uniquement pour le reload sidebar
+init_history_table()
 
 
 @st.cache_data
@@ -120,22 +124,36 @@ with st.sidebar:
     st.divider()
     st.subheader("Historique des adresses")
 
-    history: list[list[str]] = st.session_state["address_history"]
-    if not history:
+    history_entries = load_history(n=20)
+
+    if not history_entries:
         st.caption("Aucune adresse consultée pour l'instant.")
     else:
-        for i, entry in enumerate(reversed(history)):
-            label = ", ".join(a.split(" (")[0] for a in entry)
+        for entry in history_entries:
+            labels: list[str] = entry["labels"]
+            # Affiche uniquement la partie adresse, sans le "(EGID)"
+            label_short = ", ".join(a.split(" (")[0] for a in labels)
+            # Timestamp formaté : "19.03.2026 14:32"
+            ts_fmt = entry["ts"][:16].replace("T", " ")
+            ts_fmt = f"{ts_fmt[8:10]}.{ts_fmt[5:7]}.{ts_fmt[:4]} {ts_fmt[11:16]}"
+
             col_label, col_del = st.columns([5, 1])
             with col_label:
-                if st.button(label, key=f"history_{i}", use_container_width=True):
-                    st.session_state["address_multiselect"] = entry
+                if st.button(
+                    label_short,
+                    key=f"history_{entry['id']}",
+                    use_container_width=True,
+                    help=ts_fmt,  # timestamp au survol
+                ):
+                    st.session_state["address_multiselect"] = labels
                     st.rerun()
             with col_del:
-                if st.button("✕", key=f"history_del_{i}", use_container_width=True):
-                    # Reverse index back to forward index before deleting
-                    forward_index = len(history) - 1 - i
-                    st.session_state["address_history"].pop(forward_index)
+                if st.button(
+                    "✕",
+                    key=f"history_del_{entry['id']}",
+                    use_container_width=True,
+                ):
+                    delete_history_entry(entry["id"])
                     st.rerun()
 
 # ---------------------------------------------------------------------------------------
@@ -227,11 +245,8 @@ with tab3:
         selected_rows = [options_map[opt] for opt in selected_options]
         st.session_state["data_verif_idc"] = pl.DataFrame(selected_rows)
 
-        # Update history — avoid duplicates, keep last 50
-        history = st.session_state["address_history"]
-        if selected_options not in history:
-            history.append(selected_options)
-            st.session_state["address_history"] = history[-50:]
+        # Update history
+        save_history_entry(selected_options)
 
     # ---------------------------------------------------------------------------------------
     try:

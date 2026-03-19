@@ -179,7 +179,7 @@ def show_dataframe(
         use_container_width=False,
     )
 
-    _show_groupby_annee(df_display, seuil)
+    _show_groupby_annee(df_filtered, seuil)
 
     st.subheader("Agents énergétiques par année")
     show_energy_agents_table(data, year_range=year_range)
@@ -318,14 +318,14 @@ def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
 
 
 def show_energy_agents_table(
-    data_df: List[Dict],
+    data: List[Dict],
     year_range: Optional[Tuple[int, int]] = None,
 ) -> None:
     """
     Affiche une matrice année × bâtiment montrant l'agent énergétique principal.
     Permet de détecter rapidement les changements de vecteur énergétique.
     """
-    df = pl.from_dicts(data_df)
+    df = pl.from_dicts(data)
 
     if year_range:
         df = df.filter(pl.col("annee").is_between(year_range[0], year_range[1]))
@@ -353,14 +353,14 @@ def show_energy_agents_table(
     st.dataframe(df_pivot, use_container_width=True, hide_index=True)
 
 def show_sre_table(
-    data_df: List[Dict],
+    data: List[Dict],
     year_range: Optional[Tuple[int, int]] = None,
 ) -> None:
     """
     Affiche une matrice année × bâtiment montrant la surface de référence (SRE).
     Permet de détecter rapidement les changements de vecteur énergétique.
     """
-    df = pl.from_dicts(data_df)
+    df = pl.from_dicts(data)
 
     if year_range:
         df = df.filter(pl.col("annee").is_between(year_range[0], year_range[1]))
@@ -462,7 +462,6 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
             st.metric(
                 label=f"IDC pondéré ({latest_year})",
                 value=f"{idc_current:.0f} MJ/m²",
-                delta_color="inverse",
             )
         with col2:
             st.metric(

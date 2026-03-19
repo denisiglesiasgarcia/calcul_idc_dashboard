@@ -6,6 +6,7 @@ import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
+from datetime import datetime
 
 import polars as pl
 import requests
@@ -175,3 +176,83 @@ def refresh_adresses_db(
     _progress(1.0)
     _status(f"Terminé — {len(unique_records):,} adresses uniques enregistrées.")
     return len(unique_records)
+
+# ---------------------------------------------------------------------------
+# Historique des consultations
+# ---------------------------------------------------------------------------
+
+def init_history_table(db_path: str = "adresses_egid.db") -> None:
+    """
+    Crée la table d'historique si elle n'existe pas.
+    Appelée au démarrage de l'application — idempotente.
+    """
+    conn = sqlite3.connect(db_path)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS consultation_history (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts         TEXT    NOT NULL,  -- ISO timestamp
+            labels     TEXT    NOT NULL   -- JSON array of display labels (adresse + egid)
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_history_ts ON consultation_history (ts DESC)
+    """)
+    conn.commit()
+    conn.close()
+
+
+def save_history_entry(
+    selected_options: list[str],
+    db_path: str = "adresses_egid.db",
+) -> None:
+    """
+    Sauvegarde un groupe d'adresses sélectionnées dans l'historique.
+    Dédoublonne sur le contenu — ne réinsère pas si le dernier enregistrement
+    est identique à la sélection courante.
+    """
+    labels_json = json.dumps(selected_options, ensure_ascii=False)
+    conn = sqlite3.connect(db_path)
+
+    # Evite les doublons consécutifs (même sélection rechargée)
+    last = conn.execute(
+        "SELECT labels FROM consultation_history ORDER BY ts DESC LIMIT 1"
+    ).fetchone()
+
+    if last is None or last[0] != labels_json:
+        conn.execute(
+            "INSERT INTO consultation_history (ts, labels) VALUES (?, ?)",
+            (datetime.utcnow().isoformat(), labels_json),
+        )
+        conn.commit()
+    conn.close()
+
+
+def load_history(
+    n: int = 20,
+    db_path: str = "adresses_egid.db",
+) -> list[dict]:
+    """
+    Retourne les n dernières entrées de l'historique, ordre antéchronologique.
+    Chaque entrée : {"id": int, "ts": str, "labels": list[str]}
+    """
+    conn = sqlite3.connect(db_path)
+    rows = conn.execute(
+        "SELECT id, ts, labels FROM consultation_history ORDER BY ts DESC LIMIT ?",
+        (n,),
+    ).fetchall()
+    conn.close()
+    return [
+        {"id": row[0], "ts": row[1], "labels": json.loads(row[2])}
+        for row in rows
+    ]
+
+
+def delete_history_entry(
+    entry_id: int,
+    db_path: str = "adresses_egid.db",
+) -> None:
+    """Supprime une entrée d'historique par son id."""
+    conn = sqlite3.connect(db_path)
+    conn.execute("DELETE FROM consultation_history WHERE id = ?", (entry_id,))
+    conn.commit()
+    conn.close()

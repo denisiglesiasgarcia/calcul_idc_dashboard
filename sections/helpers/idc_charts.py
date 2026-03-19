@@ -99,7 +99,8 @@ def create_barplot(
                 .then(
                     pl.col("agent_energetique_1")
                     + " — "
-                    + pl.col("quantite_agent_energetique_1").cast(pl.Utf8)
+                    + pl.col("quantite_agent_energetique_1").round(0).cast(pl.Int64).cast(pl.Utf8)
+
                     + " "
                     + pl.col("unite_agent_energetique_1").fill_null("")
                 )
@@ -109,7 +110,7 @@ def create_barplot(
                 .then(
                     pl.col("agent_energetique_2")
                     + " — "
-                    + pl.col("quantite_agent_energetique_2").cast(pl.Utf8)
+                    + pl.col("quantite_agent_energetique_2").round(0).cast(pl.Int64).cast(pl.Utf8)
                     + " "
                     + pl.col("unite_agent_energetique_2").fill_null("")
                 )
@@ -119,7 +120,7 @@ def create_barplot(
                 .then(
                     pl.col("agent_energetique_3")
                     + " — "
-                    + pl.col("quantite_agent_energetique_3").cast(pl.Utf8)
+                    + pl.col("quantite_agent_energetique_3").round(0).cast(pl.Int64).cast(pl.Utf8)
                     + " "
                     + pl.col("unite_agent_energetique_3").fill_null("")
                 )
@@ -159,12 +160,15 @@ def create_barplot(
     #   0: adresse_egid   1: sre   2: destination
     #   3: agent_1_label  4: agent_2_label  5: agent_3_label
     #   6: debut          7: fin
+    n_egids = df["egid"].n_unique()
+    barmode = "relative" if n_egids == 1 else "group"
+    height = max(450, n_egids * 60 + 200)
     fig = px.bar(
         df_full,
         x="annee",
         y="indice",
         color="adresse_egid",
-        barmode="group",
+        barmode=barmode,
         custom_data=[
             "adresse_egid",
             "sre",
@@ -182,7 +186,7 @@ def create_barplot(
         },
         title=f"Indice par Année et Adresse — {nom_projet}",
         text="text",
-        height=450,
+        height=height,
     )
 
     fig.update_traces(
@@ -231,7 +235,6 @@ def create_barplot(
         )
 
     # --- IDC pondéré agrégé (uniquement si plusieurs EGIDs) ---
-    n_egids = df["egid"].n_unique()
     if n_egids >= 2:
         df_pondere = (
             df.filter((pl.col("annee") >= min_year) & (pl.col("annee") <= max_year))
