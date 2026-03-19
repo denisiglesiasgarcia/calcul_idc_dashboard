@@ -884,7 +884,6 @@ def create_barplot(
             )
             .drop(["_indice_x_sre", "_sre_total"])
             .sort("annee")
-            # Moy3 glissante pondérée SRE pour l'agrégat
             .with_columns(
                 pl.col("indice_pondere")
                 .cast(pl.Float64)
@@ -892,6 +891,22 @@ def create_barplot(
                 .round(0)
                 .alias("indice_pondere_moy3")
             )
+            # Construire le label des 3 années incluses dans la moyenne glissante
+            .with_columns([
+                pl.col("annee").shift(2).alias("_y2"),
+                pl.col("annee").shift(1).alias("_y1"),
+            ])
+            .with_columns(
+                pl.when(pl.col("indice_pondere_moy3").is_not_null())
+                .then(
+                    pl.col("_y2").cast(pl.Utf8) + ", "
+                    + pl.col("_y1").cast(pl.Utf8) + ", "
+                    + pl.col("annee").cast(pl.Utf8)
+                )
+                .otherwise(pl.lit(None))
+                .alias("annees_moy3_label")
+            )
+            .drop(["_y2", "_y1"])
         )
 
         fig.add_trace(
@@ -924,10 +939,12 @@ def create_barplot(
                     line=dict(dash="dot", color="grey", width=1),
                     marker=dict(size=5, symbol="diamond", color="grey"),
                     showlegend=True,
+                    customdata=df_moy3_pondere["annees_moy3_label"].to_list(),
                     hovertemplate=(
                         "<b>Moy3 pondérée SRE (agrégé)</b><br>"
                         "Année : %{x}<br>"
                         "IDC moy3 agrégé : <b>%{y:.0f} MJ/m²</b><br>"
+                        "Années incluses : %{customdata}<br>"
                         "<extra></extra>"
                     ),
                 )
