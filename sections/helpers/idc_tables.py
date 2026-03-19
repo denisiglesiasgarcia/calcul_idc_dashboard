@@ -197,7 +197,7 @@ def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
     if n_egids < 2:
         return
 
-    st.subheader("IDC agrégé par année (pondéré SRE)")
+    st.subheader("IDC pondéré par année (agrégation de tous les bâtiments sélectionnés)")
     st.caption(f"Agrégation de {n_egids} bâtiments — pondération par surface SRE")
 
     df_grouped = (
