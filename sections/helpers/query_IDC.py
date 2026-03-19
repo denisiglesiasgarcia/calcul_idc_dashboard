@@ -219,7 +219,9 @@ def show_map(data: List[Dict], centroid: Tuple[float, float]) -> None:
     st.pydeck_chart(deck)
 
 
-def show_dataframe(data: List[Dict], seuil: int = 450, year_range: tuple = None) -> None:
+def show_dataframe(
+    data: List[Dict], seuil: int = 450, year_range: tuple = None
+) -> None:
     df = pl.from_dicts(data)
 
     if year_range:
@@ -235,7 +237,10 @@ def show_dataframe(data: List[Dict], seuil: int = 450, year_range: tuple = None)
     with active_filters[0]:
         agents1 = sorted(df["agent_energetique_1"].drop_nulls().unique().to_list())
         selected_a1 = st.multiselect(
-            "Agent énergétique 1", options=agents1, default=agents1, key="df_filter_agent1"
+            "Agent énergétique 1",
+            options=agents1,
+            default=agents1,
+            key="df_filter_agent1",
         )
 
     selected_a2, selected_a3 = [], []
@@ -244,37 +249,77 @@ def show_dataframe(data: List[Dict], seuil: int = 450, year_range: tuple = None)
         with active_filters[1]:
             agents2 = sorted(df["agent_energetique_2"].drop_nulls().unique().to_list())
             selected_a2 = st.multiselect(
-                "Agent énergétique 2", options=agents2, default=agents2, key="df_filter_agent2"
+                "Agent énergétique 2",
+                options=agents2,
+                default=agents2,
+                key="df_filter_agent2",
             )
 
     if has_agent3:
         with active_filters[1 + has_agent2]:
             agents3 = sorted(df["agent_energetique_3"].drop_nulls().unique().to_list())
             selected_a3 = st.multiselect(
-                "Agent énergétique 3", options=agents3, default=agents3, key="df_filter_agent3"
+                "Agent énergétique 3",
+                options=agents3,
+                default=agents3,
+                key="df_filter_agent3",
             )
 
     # Null-safe filter — agents without data are skipped entirely
     df_filtered = df.filter(
         pl.col("agent_energetique_1").is_in(selected_a1)
-        & (pl.col("agent_energetique_2").is_null() | (pl.col("agent_energetique_2").is_in(selected_a2) if selected_a2 else pl.lit(True)))
-        & (pl.col("agent_energetique_3").is_null() | (pl.col("agent_energetique_3").is_in(selected_a3) if selected_a3 else pl.lit(True)))
+        & (
+            pl.col("agent_energetique_2").is_null()
+            | (
+                pl.col("agent_energetique_2").is_in(selected_a2)
+                if selected_a2
+                else pl.lit(True)
+            )
+        )
+        & (
+            pl.col("agent_energetique_3").is_null()
+            | (
+                pl.col("agent_energetique_3").is_in(selected_a3)
+                if selected_a3
+                else pl.lit(True)
+            )
+        )
     )
 
     # --- Build visible columns dynamically based on available data ---
-    base_cols = ["egid", "annee", "indice", "sre", "adresse",
-                 "agent_energetique_1", "quantite_agent_energetique_1", "unite_agent_energetique_1"]
+    base_cols = [
+        "egid",
+        "annee",
+        "indice",
+        "sre",
+        "adresse",
+        "agent_energetique_1",
+        "quantite_agent_energetique_1",
+        "unite_agent_energetique_1",
+    ]
     if has_agent2:
-        base_cols += ["agent_energetique_2", "quantite_agent_energetique_2", "unite_agent_energetique_2"]
+        base_cols += [
+            "agent_energetique_2",
+            "quantite_agent_energetique_2",
+            "unite_agent_energetique_2",
+        ]
     if has_agent3:
-        base_cols += ["agent_energetique_3", "quantite_agent_energetique_3", "unite_agent_energetique_3"]
+        base_cols += [
+            "agent_energetique_3",
+            "quantite_agent_energetique_3",
+            "unite_agent_energetique_3",
+        ]
     base_cols += ["date_debut_periode", "date_fin_periode"]
 
     # --- Column visibility toggle ---
-    show_all = st.checkbox("Afficher toutes les colonnes", value=False, key="df_show_all")
-    cols_to_show = df_filtered.columns if show_all else [
-        c for c in base_cols if c in df_filtered.columns
-    ]
+    show_all = st.checkbox(
+        "Afficher toutes les colonnes", value=False, key="df_show_all"
+    )
+    cols_to_show = (
+        df_filtered.columns
+        if show_all
+        else [c for c in base_cols if c in df_filtered.columns]
+    )
     df_display = df_filtered.select(cols_to_show)
 
     # --- Summary row count ---
@@ -290,9 +335,7 @@ def show_dataframe(data: List[Dict], seuil: int = 450, year_range: tuple = None)
             max_value=max(indice_max, seuil),
             format="%d MJ/m²",
         ),
-        "sre": st.column_config.NumberColumn(
-            label="SRE [m²]", format="%.0f m²"
-        ),
+        "sre": st.column_config.NumberColumn(label="SRE [m²]", format="%.0f m²"),
         "date_debut_periode": st.column_config.DateColumn(
             label="Début période", format="DD.MM.YYYY"
         ),
@@ -345,6 +388,10 @@ def show_dataframe(data: List[Dict], seuil: int = 450, year_range: tuple = None)
 
     _show_groupby_annee(df_display, seuil)
 
+    st.subheader("Agents énergétiques par année")
+    show_energy_agents_table(data, year_range=year_range)
+
+
 def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
     """
     Second table — SRE-weighted IDC aggregated by year across all selected buildings.
@@ -358,60 +405,69 @@ def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
     st.caption(f"Agrégation de {n_egids} bâtiments — pondération par surface SRE")
 
     df_grouped = (
-            df_display
-            .with_columns([
+        df_display.with_columns(
+            [
                 pl.col("sre").cast(pl.Float64),
                 pl.col("indice").cast(pl.Float64),
-            ])
-            .group_by("annee")
-            .agg([
+            ]
+        )
+        .group_by("annee")
+        .agg(
+            [
                 (pl.col("indice") * pl.col("sre")).sum().alias("_indice_x_sre"),
                 pl.col("sre").sum().alias("sre_totale"),
                 pl.col("indice").min().alias("indice_min"),
                 pl.col("indice").max().alias("indice_max"),
                 pl.col("egid").n_unique().alias("n_batiments"),
-            ])
-            .with_columns(
-                (pl.col("_indice_x_sre") / pl.col("sre_totale")).round(0).cast(pl.Int64).alias("indice_pondere")
-            )
-            .drop("_indice_x_sre")
-            .sort("annee")
-            .with_columns(
-                # Rolling mean over current + 2 previous years (min_periods=3 — null if < 3 years available)
-                pl.col("indice_pondere")
-                .cast(pl.Float64)
-                .rolling_mean(window_size=3, min_periods=3)
-                .round(0)
-                .cast(pl.Int64)
-                .alias("indice_moy3_calcule")
-            )
-            .sort("annee")
-            .with_columns(
-                pl.col("indice_pondere")
-                .cast(pl.Float64)
-                .rolling_mean(window_size=3, min_periods=3)
-                .round(0)
-                .cast(pl.Int64)
-                .alias("indice_moy3_calcule")
-            )
-            .with_columns([
+            ]
+        )
+        .with_columns(
+            (pl.col("_indice_x_sre") / pl.col("sre_totale"))
+            .round(0)
+            .cast(pl.Int64)
+            .alias("indice_pondere")
+        )
+        .drop("_indice_x_sre")
+        .sort("annee")
+        .with_columns(
+            pl.col("indice_pondere")
+            .cast(pl.Float64)
+            .rolling_mean(window_size=3, min_periods=3)
+            .round(0)
+            .cast(pl.Int64)
+            .alias("indice_moy3_calcule")
+        )
+        .with_columns(
+            [
                 # Retrieve the 2 preceding years for the label
                 pl.col("annee").shift(2).alias("_y2"),
                 pl.col("annee").shift(1).alias("_y1"),
-            ])
-            .with_columns(
-                # Only populate when rolling mean is valid (3 years available)
-                pl.when(pl.col("indice_moy3_calcule").is_not_null())
-                .then(
-                    pl.col("_y2").cast(pl.Utf8) + ", "
-                    + pl.col("_y1").cast(pl.Utf8) + ", "
-                    + pl.col("annee").cast(pl.Utf8)
-                )
-                .otherwise(pl.lit(None))
-                .alias("annees_concernees_moy3_calcule")
-            )
-            .drop(["_y2", "_y1"])
+            ]
         )
+        .with_columns(
+            # Only populate when rolling mean is valid (3 years available)
+            pl.when(pl.col("indice_moy3_calcule").is_not_null())
+            .then(
+                pl.col("_y2").cast(pl.Utf8)
+                + ", "
+                + pl.col("_y1").cast(pl.Utf8)
+                + ", "
+                + pl.col("annee").cast(pl.Utf8)
+            )
+            .otherwise(pl.lit(None))
+            .alias("annees_concernees_moy3_calcule")
+        )
+        .drop(["_y2", "_y1"])
+        # Delta year-over-year — nul pour la première ligne
+        .with_columns(
+            pl.col("indice_pondere")
+            .cast(pl.Float64)
+            .diff()
+            .round(0)
+            .cast(pl.Int64)
+            .alias("delta_annuel")
+        )
+    )
 
     indice_max = int(df_grouped["indice_pondere"].max() or 1000)
 
@@ -423,9 +479,15 @@ def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
             max_value=max(indice_max, seuil),
             format="%d MJ/m²",
         ),
-        "sre_totale": st.column_config.NumberColumn(label="SRE totale [m²]", format="%.0f m²"),
-        "indice_min": st.column_config.NumberColumn(label="IDC min [MJ/m²]", format="%d"),
-        "indice_max": st.column_config.NumberColumn(label="IDC max [MJ/m²]", format="%d"),
+        "sre_totale": st.column_config.NumberColumn(
+            label="SRE totale [m²]", format="%.0f m²"
+        ),
+        "indice_min": st.column_config.NumberColumn(
+            label="IDC min [MJ/m²]", format="%d"
+        ),
+        "indice_max": st.column_config.NumberColumn(
+            label="IDC max [MJ/m²]", format="%d"
+        ),
         "n_batiments": st.column_config.NumberColumn(label="Nb bâtiments", format="%d"),
         "indice_moy3_calcule": st.column_config.NumberColumn(
             label="Moy. 3 ans [MJ/m²]",
@@ -435,6 +497,11 @@ def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
         "annees_concernees_moy3_calcule": st.column_config.TextColumn(
             label="Années moy. 3 ans",
             help="Les 3 années incluses dans le calcul de la moyenne glissante.",
+        ),
+        "delta_annuel": st.column_config.NumberColumn(
+            label="Δ annuel [MJ/m²]",
+            format="%+d MJ/m²",
+            help="Variation year-over-year de l'IDC pondéré SRE. Nul pour la première année disponible.",
         ),
     }
 
@@ -452,6 +519,43 @@ def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=False,
     )
+
+
+def show_energy_agents_table(
+    data_df: List[Dict],
+    year_range: Optional[Tuple[int, int]] = None,
+) -> None:
+    """
+    Affiche une matrice année × bâtiment montrant l'agent énergétique principal.
+    Permet de détecter rapidement les changements de vecteur énergétique.
+    """
+    df = pl.from_dicts(data_df)
+
+    if year_range:
+        df = df.filter(pl.col("annee").is_between(year_range[0], year_range[1]))
+
+    df = df.with_columns(
+        (pl.col("adresse") + " - " + pl.col("egid").cast(pl.Utf8)).alias("adresse_egid")
+    ).select(["adresse_egid", "annee", "agent_energetique_1"])
+
+    # Pivot : lignes = bâtiment, colonnes = année
+    df_pivot = df.pivot(
+        index="adresse_egid", on="annee", values="agent_energetique_1"
+    ).sort("adresse_egid")
+
+    # Colonnes année triées chronologiquement
+    year_cols = sorted(
+        [c for c in df_pivot.columns if c != "adresse_egid"],
+        key=lambda x: int(x),
+    )
+    df_pivot = df_pivot.select(["adresse_egid"] + year_cols)
+
+    st.caption(
+        "Agent énergétique principal (agent_energetique_1) par année. "
+        "Une cellule vide indique absence de données pour cette année."
+    )
+    st.dataframe(df_pivot, use_container_width=True, hide_index=True)
+
 
 def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
     """
@@ -520,7 +624,7 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
                 value=f"{seuil} MJ/m²",
                 help="Seuil indicatif configurable dans la barre latérale.",
             )
-    if seuil == 0:
+    elif seuil == 0:
         col1, col2 = st.columns(2)
 
         with col1:
@@ -537,10 +641,7 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
                 value=f"{idc_moy3:.0f} MJ/m²" if idc_moy3 is not None else "N/A",
                 help="Valeur indice_moy3 issue de la base SITG, pondérée par SRE.",
             )
-    else:
-        st.warning(
-            "Seuil doit être supérieur ou égal à 0"
-        )
+
 
 def create_barplot(
     data_df: List[Dict],
@@ -764,28 +865,40 @@ def create_barplot(
     n_egids = df["egid"].n_unique()
     if n_egids >= 2:
         df_pondere = (
-            df.filter(
-                (pl.col("annee") >= min_year) & (pl.col("annee") <= max_year)
-            )
-            .with_columns([
-                pl.col("sre").cast(pl.Float64),
-                pl.col("indice").cast(pl.Float64),
-            ])
-            .group_by("annee")
-            .agg([
-                (pl.col("indice") * pl.col("sre")).sum().alias("_indice_x_sre"),
-                pl.col("sre").sum().alias("_sre_total"),
-            ])
+            df.filter((pl.col("annee") >= min_year) & (pl.col("annee") <= max_year))
             .with_columns(
-                (pl.col("_indice_x_sre") / pl.col("_sre_total")).round(0).alias("indice_pondere")
+                [
+                    pl.col("sre").cast(pl.Float64),
+                    pl.col("indice").cast(pl.Float64),
+                ]
+            )
+            .group_by("annee")
+            .agg(
+                [
+                    (pl.col("indice") * pl.col("sre")).sum().alias("_indice_x_sre"),
+                    pl.col("sre").sum().alias("_sre_total"),
+                ]
+            )
+            .with_columns(
+                (pl.col("_indice_x_sre") / pl.col("_sre_total"))
+                .round(0)
+                .alias("indice_pondere")
             )
             .drop(["_indice_x_sre", "_sre_total"])
             .sort("annee")
+            # Moy3 glissante pondérée SRE pour l'agrégat
+            .with_columns(
+                pl.col("indice_pondere")
+                .cast(pl.Float64)
+                .rolling_mean(window_size=3, min_periods=3)
+                .round(0)
+                .alias("indice_pondere_moy3")
+            )
         )
 
         fig.add_trace(
             go.Scatter(
-                x=df_pondere["annee"].cast(pl.Utf8).to_list(), 
+                x=df_pondere["annee"].cast(pl.Utf8).to_list(),
                 y=df_pondere["indice_pondere"].to_list(),
                 mode="lines+markers",
                 name="IDC pondéré SRE (agrégé)",
@@ -800,6 +913,27 @@ def create_barplot(
                 ),
             )
         )
+
+        # Trace moy3 agrégée — uniquement les années où 3 valeurs sont disponibles
+        df_moy3_pondere = df_pondere.filter(pl.col("indice_pondere_moy3").is_not_null())
+        if len(df_moy3_pondere) > 0:
+            fig.add_trace(
+                go.Scatter(
+                    x=df_moy3_pondere["annee"].cast(pl.Utf8).to_list(),
+                    y=df_moy3_pondere["indice_pondere_moy3"].to_list(),
+                    mode="lines+markers",
+                    name="Moy3 pondérée SRE (agrégé)",
+                    line=dict(dash="dot", color="grey", width=1),
+                    marker=dict(size=5, symbol="diamond", color="grey"),
+                    showlegend=True,
+                    hovertemplate=(
+                        "<b>Moy3 pondérée SRE (agrégé)</b><br>"
+                        "Année : %{x}<br>"
+                        "IDC moy3 agrégé : <b>%{y:.0f} MJ/m²</b><br>"
+                        "<extra></extra>"
+                    ),
+                )
+            )
 
     # Reference line at IDC threshold
     if seuil:
@@ -903,6 +1037,7 @@ def refresh_adresses_db(
 
     Returns the total number of unique records saved.
     """
+
     def _status(msg: str) -> None:
         if status_text is not None:
             status_text.caption(msg)
@@ -925,9 +1060,13 @@ def refresh_adresses_db(
         resp.raise_for_status()
         total_count = resp.json().get("count", 0)
     except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
-        raise RuntimeError(f"Impossible de récupérer le nombre total d'adresses: {e}") from e
+        raise RuntimeError(
+            f"Impossible de récupérer le nombre total d'adresses: {e}"
+        ) from e
 
-    _status(f"{total_count:,} adresses trouvées — téléchargement en parallèle ({max_workers} workers)...")
+    _status(
+        f"{total_count:,} adresses trouvées — téléchargement en parallèle ({max_workers} workers)..."
+    )
 
     offsets = list(range(0, total_count, chunk_size))
     completed_pages = 0
@@ -979,7 +1118,9 @@ def refresh_adresses_db(
             try:
                 records = future.result()
             except Exception as e:
-                raise RuntimeError(f"Échec du téléchargement à l'offset {offset}: {e}") from e
+                raise RuntimeError(
+                    f"Échec du téléchargement à l'offset {offset}: {e}"
+                ) from e
 
             with lock:
                 all_records.extend(records)
@@ -994,7 +1135,12 @@ def refresh_adresses_db(
     # --- Step 3: deduplicate with Polars ---
     _status("Dédoublonnage et écriture en base...")
     df = (
-        pl.DataFrame({"egid": [r[0] for r in all_records], "adresse": [r[1] for r in all_records]})
+        pl.DataFrame(
+            {
+                "egid": [r[0] for r in all_records],
+                "adresse": [r[1] for r in all_records],
+            }
+        )
         .unique()
         .sort("adresse")
     )

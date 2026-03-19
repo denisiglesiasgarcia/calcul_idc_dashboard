@@ -195,6 +195,36 @@ with tab3:
         key="address_multiselect",
     )
 
+    # Import rapide depuis une liste d'EGIDs (ex. copier-coller depuis Excel)
+    with st.expander("Charger depuis une liste d'EGIDs"):
+        egid_raw = st.text_area(
+            "EGIDs (un par ligne, ou séparés par virgule/point-virgule)",
+            height=80,
+            placeholder="Ex :\n120456\n120457\n120458",
+            key="egid_import_textarea",
+        )
+        if st.button("Charger", key="btn_load_egids", use_container_width=False):
+            # Normalise les séparateurs puis déduplique
+            tokens = egid_raw.replace(",", "\n").replace(";", "\n").splitlines()
+            egids_input = {t.strip() for t in tokens if t.strip()}
+
+            matched = [
+                opt for opt in display_options
+                if options_map[opt]["egid"] in egids_input
+            ]
+            not_found = egids_input - {options_map[opt]["egid"] for opt in matched}
+
+            if matched:
+                st.session_state["address_multiselect"] = matched
+                if not_found:
+                    st.warning(
+                        f"{len(not_found)} EGID(s) non trouvé(s) dans la base locale : "
+                        f"{', '.join(sorted(not_found))}"
+                    )
+                st.rerun()
+            else:
+                st.warning("Aucun EGID correspondant trouvé dans la base locale.")
+
     if selected_options:
         st.write(f"{len(selected_options)} adresse(s) sélectionnée(s)")
         selected_rows = [options_map[opt] for opt in selected_options]
