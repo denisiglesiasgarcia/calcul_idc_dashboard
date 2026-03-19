@@ -94,33 +94,46 @@ def create_barplot(
                 .then(pl.col("indice").cast(pl.Int64).cast(pl.Utf8))
                 .otherwise(pl.lit(""))
                 .alias("text"),
-                # Format agent lines: "Gaz — 257835 kWh" or empty when null
+                # Agent 1
                 pl.when(pl.col("agent_energetique_1").is_not_null())
                 .then(
                     pl.col("agent_energetique_1")
                     + " — "
-                    + pl.col("quantite_agent_energetique_1").round(0).cast(pl.Int64).cast(pl.Utf8)
-
+                    + pl.col("quantite_agent_energetique_1")
+                    .cast(pl.Float64)
+                    .round(0)
+                    .cast(pl.Int64)
+                    .cast(pl.Utf8)
                     + " "
                     + pl.col("unite_agent_energetique_1").fill_null("")
                 )
                 .otherwise(pl.lit(""))
                 .alias("agent_1_label"),
+                # Agent 2
                 pl.when(pl.col("agent_energetique_2").is_not_null())
                 .then(
                     pl.col("agent_energetique_2")
                     + " — "
-                    + pl.col("quantite_agent_energetique_2").round(0).cast(pl.Int64).cast(pl.Utf8)
+                    + pl.col("quantite_agent_energetique_2")
+                    .cast(pl.Float64)
+                    .round(0)
+                    .cast(pl.Int64)
+                    .cast(pl.Utf8)
                     + " "
                     + pl.col("unite_agent_energetique_2").fill_null("")
                 )
                 .otherwise(pl.lit(""))
                 .alias("agent_2_label"),
+                # Agent 3
                 pl.when(pl.col("agent_energetique_3").is_not_null())
                 .then(
                     pl.col("agent_energetique_3")
                     + " — "
-                    + pl.col("quantite_agent_energetique_3").round(0).cast(pl.Int64).cast(pl.Utf8)
+                    + pl.col("quantite_agent_energetique_3")
+                    .cast(pl.Float64)
+                    .round(0)
+                    .cast(pl.Int64)
+                    .cast(pl.Utf8)
                     + " "
                     + pl.col("unite_agent_energetique_3").fill_null("")
                 )
