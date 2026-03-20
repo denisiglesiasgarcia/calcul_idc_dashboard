@@ -285,6 +285,10 @@ with tab3:
             st.session_state["address_multiselect"] = []
             st.rerun()
 
+    # Transfer pending selection set by the address importer (runs before widget instantiation)
+    if "_pending_multiselect" in st.session_state:
+        st.session_state["address_multiselect"] = st.session_state.pop("_pending_multiselect")
+
     selected_options = st.multiselect(
         label="Adresse",
         options=filtered_options,  # ← liste filtrée : la dropdown reste stable lors des clics successifs
@@ -310,19 +314,16 @@ with tab3:
             tokens = adresse_raw.splitlines()
             adresses_input = {t.strip() for t in tokens if t.strip()}
 
-            # Case-insensitive lookup
             matched = [
                 adresse_to_display[a.lower()]
                 for a in adresses_input
                 if a.lower() in adresse_to_display
             ]
-            not_found = {
-                a for a in adresses_input
-                if a.lower() not in adresse_to_display
-            }
+            not_found = {a for a in adresses_input if a.lower() not in adresse_to_display}
 
             if matched:
-                st.session_state["address_multiselect"] = matched
+                # Use staging key — direct write after widget instantiation raises StreamlitAPIException
+                st.session_state["_pending_multiselect"] = matched
                 if not_found:
                     st.warning(
                         f"{len(not_found)} adresse(s) non trouvée(s) dans la base locale : "
