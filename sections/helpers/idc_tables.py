@@ -322,7 +322,8 @@ def show_energy_agents_table(
     year_range: Optional[Tuple[int, int]] = None,
 ) -> None:
     """
-    Affiche une matrice année × bâtiment montrant l'agent énergétique principal.
+    Affiche une matrice année × bâtiment montrant les agents énergétiques.
+    Les agents 1/2/3 sont concaténés dans la cellule si plusieurs existent.
     Permet de détecter rapidement les changements de vecteur énergétique.
     """
     df = pl.from_dicts(data)
@@ -330,13 +331,33 @@ def show_energy_agents_table(
     if year_range:
         df = df.filter(pl.col("annee").is_between(year_range[0], year_range[1]))
 
+    # Colonnes agents présentes dans le dataset (1 est obligatoire, 2 et 3 optionnelles)
+    agent_cols = [c for c in ["agent_energetique_1", "agent_energetique_2", "agent_energetique_3"] if c in df.columns]
+
+    # Cast tous les agents en Utf8 et remplace les nulls par "" pour la concaténation
+    df = df.with_columns([pl.col(c).cast(pl.Utf8).fill_null("") for c in agent_cols])
+
+    # Concatène les agents non-vides séparés par " / "
+    df = df.with_columns(
+        pl.concat_str(
+            [pl.col(c) for c in agent_cols],
+            separator=" / ",
+            ignore_nulls=True,
+        )
+        # Supprime les " / " en fin de chaîne laissés par les agents vides
+        .str.replace_all(r"(?: / )+$", "")
+        .str.replace_all(r"^ / | / $", "")
+        .str.replace_all(r" /  / ", " / ")
+        .alias("agents")
+    )
+
     df = df.with_columns(
         (pl.col("adresse") + " - " + pl.col("egid").cast(pl.Utf8)).alias("adresse_egid")
-    ).select(["adresse_egid", "annee", "agent_energetique_1"])
+    )
 
     # Pivot : lignes = bâtiment, colonnes = année
     df_pivot = df.pivot(
-        index="adresse_egid", on="annee", values="agent_energetique_1"
+        index="adresse_egid", on="annee", values="agents"
     ).sort("adresse_egid")
 
     # Colonnes année triées chronologiquement
@@ -347,8 +368,8 @@ def show_energy_agents_table(
     df_pivot = df_pivot.select(["adresse_egid"] + year_cols)
 
     st.caption(
-        "Agent énergétique principal (agent_energetique_1) par année. "
-        "Une cellule vide indique absence de données pour cette année."
+        f"Agents énergétiques ({', '.join(agent_cols)}) concaténés par année. "
+        "Une cellule vide indique absence de données."
     )
     st.dataframe(df_pivot, use_container_width=True, hide_index=True)
 
