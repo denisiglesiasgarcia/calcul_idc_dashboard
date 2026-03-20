@@ -200,33 +200,6 @@ def init_history_table(db_path: str = "adresses_egid.db") -> None:
     conn.commit()
     conn.close()
 
-
-def save_history_entry(
-    selected_options: list[str],
-    db_path: str = "adresses_egid.db",
-) -> None:
-    """
-    Sauvegarde un groupe d'adresses sélectionnées dans l'historique.
-    Dédoublonne sur le contenu — ne réinsère pas si le dernier enregistrement
-    est identique à la sélection courante.
-    """
-    labels_json = json.dumps(selected_options, ensure_ascii=False)
-    conn = sqlite3.connect(db_path)
-
-    # Evite les doublons consécutifs (même sélection rechargée)
-    last = conn.execute(
-        "SELECT labels FROM consultation_history ORDER BY ts DESC LIMIT 1"
-    ).fetchone()
-
-    if last is None or last[0] != labels_json:
-        conn.execute(
-            "INSERT INTO consultation_history (ts, labels) VALUES (?, ?)",
-            (datetime.utcnow().isoformat(), labels_json),
-        )
-        conn.commit()
-    conn.close()
-
-
 def load_history(
     n: int = 20,
     db_path: str = "adresses_egid.db",
@@ -254,5 +227,94 @@ def delete_history_entry(
     """Supprime une entrée d'historique par son id."""
     conn = sqlite3.connect(db_path)
     conn.execute("DELETE FROM consultation_history WHERE id = ?", (entry_id,))
+    conn.commit()
+    conn.close()
+
+def save_history_entry(
+    selected_options: list[str],
+    db_path: str = "adresses_egid.db",
+) -> None:
+    """
+    Sauvegarde un groupe d'adresses dans l'historique.
+    Ne réinsère pas si le même ensemble d'adresses existe déjà (dans n'importe
+    quelle entrée, pas seulement la dernière). Labels triés pour comparaison
+    normalisée indépendante de l'ordre de sélection.
+    """
+    # Sort for consistent comparison regardless of selection order
+    labels_json = json.dumps(sorted(selected_options), ensure_ascii=False)
+    conn = sqlite3.connect(db_path)
+
+    existing = conn.execute(
+        "SELECT id FROM consultation_history WHERE labels = ?", (labels_json,)
+    ).fetchone()
+
+    if existing is None:
+        conn.execute(
+            "INSERT INTO consultation_history (ts, labels) VALUES (?, ?)",
+            (datetime.utcnow().isoformat(), labels_json),
+        )
+        conn.commit()
+    conn.close()
+
+
+# ── ADDED: favorites ───────────────────────────────────────────────────────
+def init_favorites_table(db_path: str = "adresses_egid.db") -> None:
+    """
+    Crée la table des favoris si elle n'existe pas. Idempotente.
+    UNIQUE sur labels (JSON trié) — évite les doublons au niveau DB.
+    """
+    conn = sqlite3.connect(db_path)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS adresses_favorites (
+            id     INTEGER PRIMARY KEY AUTOINCREMENT,
+            name   TEXT    NOT NULL,
+            labels TEXT    NOT NULL UNIQUE  -- JSON array, sorted
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def save_favorite(
+    name: str,
+    labels: list[str],
+    db_path: str = "adresses_egid.db",
+) -> bool:
+    """
+    Sauvegarde un favori. Retourne False si le groupe d'adresses existe déjà.
+    Labels triés pour cohérence avec save_history_entry.
+    """
+    labels_json = json.dumps(sorted(labels), ensure_ascii=False)
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO adresses_favorites (name, labels) VALUES (?, ?)",
+            (name, labels_json),
+        )
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False  # same label set already saved
+    finally:
+        conn.close()
+
+
+def load_favorites(db_path: str = "adresses_egid.db") -> list[dict]:
+    """
+    Retourne tous les favoris triés par nom.
+    Chaque entrée : {"id": int, "name": str, "labels": list[str]}
+    """
+    conn = sqlite3.connect(db_path)
+    rows = conn.execute(
+        "SELECT id, name, labels FROM adresses_favorites ORDER BY name"
+    ).fetchall()
+    conn.close()
+    return [{"id": r[0], "name": r[1], "labels": json.loads(r[2])} for r in rows]
+
+
+def delete_favorite(fav_id: int, db_path: str = "adresses_egid.db") -> None:
+    """Supprime un favori par son id."""
+    conn = sqlite3.connect(db_path)
+    conn.execute("DELETE FROM adresses_favorites WHERE id = ?", (fav_id,))
     conn.commit()
     conn.close()

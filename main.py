@@ -12,6 +12,10 @@ from sections.helpers.db import (
     load_history,
     delete_history_entry,
     refresh_adresses_db,
+    init_favorites_table,
+    save_favorite,
+    load_favorites,
+    delete_favorite,
 )
 from sections.helpers.idc_api import fetch_idc_data
 from sections.helpers.idc_geo import convert_geometry_for_streamlit, show_map
@@ -41,7 +45,7 @@ CURRENT_YEAR = datetime.now().year
 
 # Init DB au démarrage, session_state uniquement pour le reload sidebar
 init_history_table()
-
+init_favorites_table()
 
 @st.cache_data
 def get_all_addresses(db_path: str = "adresses_egid.db") -> pl.DataFrame:
@@ -121,6 +125,55 @@ with st.sidebar:
         "Les données proviennent de la base SCANE_INDICE_MOYENNES_3_ANS "
         "du SITG (Genève)."
     )
+
+    st.divider()
+    st.subheader("Favoris")
+
+    favorites = load_favorites()
+
+    if not favorites:
+        st.caption("Aucun favori enregistré.")
+    else:
+        fav_names = [f["name"] for f in favorites]
+        selected_fav_name = st.selectbox(
+            "Charger un favori",
+            options=["—"] + fav_names,
+            key="fav_selectbox",
+            label_visibility="collapsed",
+        )
+
+        if selected_fav_name != "—":
+            fav = next(f for f in favorites if f["name"] == selected_fav_name)
+            col_load, col_del = st.columns([3, 1])
+            with col_load:
+                if st.button("Charger", key="btn_load_fav", use_container_width=True):
+                    st.session_state["address_multiselect"] = fav["labels"]
+                    st.rerun()
+            with col_del:
+                if st.button("✕", key="btn_del_fav", use_container_width=True):
+                    delete_favorite(fav["id"])
+                    st.rerun()
+
+    # Save current selection as favorite
+    if st.session_state.get("address_multiselect"):
+        with st.expander("Sauvegarder la sélection comme favori"):
+            fav_name_input = st.text_input(
+                "Nom du favori",
+                placeholder="Ex : Bâtiments rue de Rive",
+                key="fav_name_input",
+            )
+            if st.button("Sauvegarder", key="btn_save_fav", use_container_width=True):
+                if fav_name_input.strip():
+                    ok = save_favorite(
+                        fav_name_input.strip(),
+                        st.session_state["address_multiselect"],
+                    )
+                    if ok:
+                        st.success("Favori sauvegardé.")
+                    else:
+                        st.warning("Ce groupe d'adresses est déjà dans vos favoris.")
+                else:
+                    st.warning("Saisissez un nom avant de sauvegarder.")
 
     st.divider()
     st.subheader("Historique des adresses")
@@ -216,9 +269,15 @@ with tab3:
     )
 
     with col_all:
-        if st.button("Tout", use_container_width=True, help="Ajouter les résultats filtrés à la sélection"):
+        if st.button(
+            "Tout",
+            use_container_width=True,
+            help="Ajouter les résultats filtrés à la sélection",
+        ):
             current = set(st.session_state["address_multiselect"])
-            st.session_state["address_multiselect"] = list(current | set(filtered_options))
+            st.session_state["address_multiselect"] = list(
+                current | set(filtered_options)
+            )
             st.rerun()
 
     with col_clear:
