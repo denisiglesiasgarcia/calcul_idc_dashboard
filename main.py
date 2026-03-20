@@ -165,22 +165,13 @@ with st.sidebar:
 with tab3:
     st.subheader("Sélection adresse")
 
-    # Allow multiselect tags to expand to their full text width instead of
-    # truncating with "...". The span inside each tag holds the label text.
     st.markdown(
         """
         <style>
-        /* Tag container: remove max-width cap and grow to fit content */
-        span[data-baseweb="tag"] {
-            max-width: none !important;
-            width: fit-content !important;
-        }
-        /* Inner text span: keep single line, disable overflow clipping */
+        span[data-baseweb="tag"] { max-width: none !important; width: fit-content !important; }
         span[data-baseweb="tag"] > span:first-child {
-            overflow: visible !important;
-            white-space: nowrap !important;
-            text-overflow: unset !important;
-            max-width: none !important;
+            overflow: visible !important; white-space: nowrap !important;
+            text-overflow: unset !important; max-width: none !important;
         }
         </style>
         """,
@@ -189,7 +180,6 @@ with tab3:
 
     df_addresses = get_all_addresses()
 
-    # Build display labels and lookup map in a single Polars pass
     df_addresses = df_addresses.with_columns(
         pl.col("egid").cast(pl.Utf8).fill_null("N/A").alias("egid_str")
     ).with_columns(
@@ -201,18 +191,50 @@ with tab3:
         row["display"]: {"adresse": row["adresse"], "egid": row["egid_str"]}
         for row in df_addresses.to_dicts()
     }
+    # Reverse map: egid -> display label
+    egid_to_display: dict[str, str] = {v["egid"]: k for k, v in options_map.items()}
 
     if "address_multiselect" not in st.session_state:
         st.session_state["address_multiselect"] = []
 
-    selected_options = st.multiselect(
-        label="Adresse",
-        options=display_options,
-        placeholder="Sélectionner une ou plusieurs adresses...",
-        key="address_multiselect",
+    # External filter + bulk action buttons
+    col_search, col_all, col_clear = st.columns([6, 1, 1])
+
+    with col_search:
+        search_filter = st.text_input(
+            "Filtrer",
+            placeholder="Taper pour filtrer les adresses...",
+            label_visibility="collapsed",
+            key="address_search_filter",
+        )
+
+    # Apply filter on the full list
+    filtered_options = (
+        [o for o in display_options if search_filter.lower() in o.lower()]
+        if search_filter
+        else display_options
     )
 
-    # Import rapide depuis une liste d'EGIDs (ex. copier-coller depuis Excel)
+    with col_all:
+        if st.button("Tout", use_container_width=True, help="Ajouter les résultats filtrés à la sélection"):
+            current = set(st.session_state["address_multiselect"])
+            st.session_state["address_multiselect"] = list(current | set(filtered_options))
+            st.rerun()
+
+    with col_clear:
+        if st.button("Aucun", use_container_width=True, help="Vider la sélection"):
+            st.session_state["address_multiselect"] = []
+            st.rerun()
+
+    selected_options = st.multiselect(
+        label="Adresse",
+        options=filtered_options,  # ← liste filtrée : la dropdown reste stable lors des clics successifs
+        placeholder="Sélectionner une ou plusieurs adresses...",
+        key="address_multiselect",
+        label_visibility="collapsed",
+    )
+
+    # Import rapide depuis une liste d'EGIDs
     with st.expander("Charger depuis une liste d'EGIDs"):
         egid_raw = st.text_area(
             "EGIDs (un par ligne, ou séparés par virgule/point-virgule)",
@@ -221,15 +243,10 @@ with tab3:
             key="egid_import_textarea",
         )
         if st.button("Charger", key="btn_load_egids", use_container_width=False):
-            # Normalise les séparateurs puis déduplique
             tokens = egid_raw.replace(",", "\n").replace(";", "\n").splitlines()
             egids_input = {t.strip() for t in tokens if t.strip()}
 
-            matched = [
-                opt
-                for opt in display_options
-                if options_map[opt]["egid"] in egids_input
-            ]
+            matched = [egid_to_display[e] for e in egids_input if e in egid_to_display]
             not_found = egids_input - {options_map[opt]["egid"] for opt in matched}
 
             if matched:
@@ -247,8 +264,6 @@ with tab3:
         st.write(f"{len(selected_options)} adresse(s) sélectionnée(s)")
         selected_rows = [options_map[opt] for opt in selected_options]
         st.session_state["data_verif_idc"] = pl.DataFrame(selected_rows)
-
-        # Update history
         save_history_entry(selected_options)
 
     # ---------------------------------------------------------------------------------------
