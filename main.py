@@ -157,8 +157,11 @@ with st.sidebar:
                     st.rerun()
 
     # Save current selection as favorite
-    if st.session_state.get("address_multiselect"):
-        with st.expander("Sauvegarder la sélection comme favori"):
+    with st.expander("Sauvegarder la sélection comme favori"):
+        current_selection = st.session_state.get("address_multiselect", [])
+        if not current_selection:
+            st.caption("Aucune adresse sélectionnée.")
+        else:
             fav_name_input = st.text_input(
                 "Nom du favori",
                 placeholder="Ex : Bâtiments rue de Rive",
@@ -168,11 +171,11 @@ with st.sidebar:
                 if fav_name_input.strip():
                     ok = save_favorite(
                         fav_name_input.strip(),
-                        st.session_state["address_multiselect"],
+                        current_selection,
                     )
                     if ok:
-                        st.toast("Favori sauvegardé.")  # survit au rerun
-                        st.rerun()                      # rafraîchit la liste
+                        st.toast("Favori sauvegardé.")
+                        st.rerun()
                     else:
                         st.warning("Ce groupe d'adresses est déjà dans vos favoris.")
                 else:
