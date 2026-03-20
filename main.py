@@ -169,7 +169,8 @@ with st.sidebar:
                         st.session_state["address_multiselect"],
                     )
                     if ok:
-                        st.success("Favori sauvegardé.")
+                        st.toast("Favori sauvegardé.")  # survit au rerun
+                        st.rerun()                      # rafraîchit la liste
                     else:
                         st.warning("Ce groupe d'adresses est déjà dans vos favoris.")
                 else:
