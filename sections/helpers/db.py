@@ -17,8 +17,14 @@ logger.setLevel(logging.INFO)
 
 
 def _get_conn():
-    """Open a new psycopg2 connection using Streamlit secrets."""
-    return psycopg2.connect(st.secrets["supabase"]["url"])
+    s = st.secrets["supabase"]
+    return psycopg2.connect(
+        host=s["host"],
+        port=s["port"],
+        dbname=s["dbname"],
+        user=s["user"],
+        password=s["password"],
+    )
 
 
 # ---------------------------------------------------------------------------
