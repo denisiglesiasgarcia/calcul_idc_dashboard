@@ -293,31 +293,44 @@ with tab3:
         label_visibility="collapsed",
     )
 
-    # Import rapide depuis une liste d'EGIDs
-    with st.expander("Charger depuis une liste d'EGIDs"):
-        egid_raw = st.text_area(
-            "EGIDs (un par ligne, ou séparés par virgule/point-virgule)",
-            height=80,
-            placeholder="Ex :\n120456\n120457\n120458",
-            key="egid_import_textarea",
-        )
-        if st.button("Charger", key="btn_load_egids", use_container_width=False):
-            tokens = egid_raw.replace(",", "\n").replace(";", "\n").splitlines()
-            egids_input = {t.strip() for t in tokens if t.strip()}
+    # Reverse map: adresse (lowercase) -> display label — pour la recherche insensible à la casse
+    adresse_to_display: dict[str, str] = {
+        v["adresse"].lower(): k for k, v in options_map.items()
+    }
 
-            matched = [egid_to_display[e] for e in egids_input if e in egid_to_display]
-            not_found = egids_input - {options_map[opt]["egid"] for opt in matched}
+    # Import rapide depuis une liste d'EGIDs
+    with st.expander("Charger depuis une liste d'adresses"):
+        adresse_raw = st.text_area(
+            "Adresses (une par ligne)",
+            height=80,
+            placeholder="Ex :\nRue de Rive 10\nRue du Rhône 5",
+            key="adresse_import_textarea",
+        )
+        if st.button("Charger", key="btn_load_adresses", use_container_width=False):
+            tokens = adresse_raw.splitlines()
+            adresses_input = {t.strip() for t in tokens if t.strip()}
+
+            # Case-insensitive lookup
+            matched = [
+                adresse_to_display[a.lower()]
+                for a in adresses_input
+                if a.lower() in adresse_to_display
+            ]
+            not_found = {
+                a for a in adresses_input
+                if a.lower() not in adresse_to_display
+            }
 
             if matched:
                 st.session_state["address_multiselect"] = matched
                 if not_found:
                     st.warning(
-                        f"{len(not_found)} EGID(s) non trouvé(s) dans la base locale : "
+                        f"{len(not_found)} adresse(s) non trouvée(s) dans la base locale : "
                         f"{', '.join(sorted(not_found))}"
                     )
                 st.rerun()
             else:
-                st.warning("Aucun EGID correspondant trouvé dans la base locale.")
+                st.warning("Aucune adresse correspondante trouvée dans la base locale.")
 
     if selected_options:
         st.write(f"{len(selected_options)} adresse(s) sélectionnée(s)")
