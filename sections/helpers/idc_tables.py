@@ -8,7 +8,7 @@ import streamlit as st
 
 from sections.helpers.save_excel_streamlit import convert_df_to_excel
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 
 
 def show_dataframe(

@@ -8,7 +8,7 @@ import polars as pl
 import requests
 
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 
 # Columns to keep from the API response, in display order
 RESULT_COLUMNS = [

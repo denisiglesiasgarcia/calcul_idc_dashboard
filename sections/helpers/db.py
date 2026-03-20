@@ -12,7 +12,7 @@ import polars as pl
 import requests
 
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 
 
 def refresh_adresses_db(

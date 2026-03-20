@@ -9,7 +9,7 @@ import streamlit as st
 from pyproj import Transformer
 
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 
 
 # ---------------------------------------------------------------------------

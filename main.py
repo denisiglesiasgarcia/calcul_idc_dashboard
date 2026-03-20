@@ -73,6 +73,8 @@ def get_all_addresses(db_path: str = "adresses_egid.db") -> pl.DataFrame:
     finally:
         conn.close()
 
+if "address_multiselect" not in st.session_state:
+    st.session_state["address_multiselect"] = []
 
 # ---------------------------------------------------------------------------------------
 # Sidebar — analysis parameters
@@ -247,9 +249,6 @@ with tab3:
     }
     # Reverse map: egid -> display label
     egid_to_display: dict[str, str] = {v["egid"]: k for k, v in options_map.items()}
-
-    if "address_multiselect" not in st.session_state:
-        st.session_state["address_multiselect"] = []
 
     # External filter + bulk action buttons
     col_search, col_all, col_clear = st.columns([6, 1, 1])

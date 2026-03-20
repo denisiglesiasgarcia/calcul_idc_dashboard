@@ -9,7 +9,7 @@ import polars as pl
 import streamlit as st
 
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 
 
 def create_barplot(
