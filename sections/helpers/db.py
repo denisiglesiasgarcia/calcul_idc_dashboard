@@ -9,6 +9,7 @@ from datetime import datetime
 
 import polars as pl
 import psycopg2
+from psycopg2.extras import execute_values
 import requests
 import streamlit as st
 
@@ -170,15 +171,16 @@ def refresh_adresses_db(
     )
     unique_records = df.rows()
 
-    # Step 3: truncate and bulk insert in chunks of 1000
+    # Step 3: truncate and bulk insert with execute_values
     conn = _get_conn()
     with conn:
         _execute(conn, "TRUNCATE TABLE adresses_egid")
         cur = conn.cursor()
         chunk = 1000
         for i in range(0, len(unique_records), chunk):
-            cur.executemany(
-                "INSERT INTO adresses_egid (egid, adresse) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+            execute_values(
+                cur,
+                "INSERT INTO adresses_egid (egid, adresse) VALUES %s ON CONFLICT DO NOTHING",
                 unique_records[i : i + chunk],
             )
         cur.close()
