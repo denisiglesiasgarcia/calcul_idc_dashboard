@@ -198,26 +198,30 @@ def refresh_adresses_db(
     )
     unique_records = df.rows()
 
-    # Step 3: truncate and bulk insert with execute_values
+    # Step 3: TRUNCATE puis INSERT chunk par chunk, chacun dans sa propre transaction
     conn = _get_conn(statement_timeout_ms=300_000)
-    with conn:
-        _execute(conn, "TRUNCATE TABLE adresses_egid")
-        cur = conn.cursor()
-        chunk = 1000
-        total_chunks = (len(unique_records) + chunk - 1) // chunk
-        for idx, i in enumerate(range(0, len(unique_records), chunk)):
-            execute_values(
-                cur,
-                "INSERT INTO adresses_egid (egid, adresse) VALUES %s ON CONFLICT DO NOTHING",
-                unique_records[i : i + chunk],
-            )
-            # Map DB write progress to the last 10% (0.9 → 1.0)
-            write_frac = (idx + 1) / total_chunks
-            _progress(0.9 + write_frac * 0.1)
-            _status(
-                f"Écriture en base : {min(i + chunk, len(unique_records)):,} / {len(unique_records):,} adresses"
-            )
-        cur.close()
+    cur = conn.cursor()
+
+    # TRUNCATE dans sa propre transaction
+    cur.execute("TRUNCATE TABLE adresses_egid")
+    conn.commit()
+
+    chunk = 100
+    total_chunks = (len(unique_records) + chunk - 1) // chunk
+    for idx, i in enumerate(range(0, len(unique_records), chunk)):
+        execute_values(
+            cur,
+            "INSERT INTO adresses_egid (egid, adresse) VALUES %s ON CONFLICT DO NOTHING",
+            unique_records[i : i + chunk],
+        )
+        conn.commit()  # chaque chunk est une transaction indépendante
+        write_frac = (idx + 1) / total_chunks
+        _progress(0.9 + write_frac * 0.1)
+        _status(
+            f"Écriture en base : {min(i + chunk, len(unique_records)):,} / {len(unique_records):,} adresses"
+        )
+
+    cur.close()
     conn.close()
 
     _progress(1.0)
