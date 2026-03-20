@@ -177,11 +177,18 @@ def refresh_adresses_db(
         _execute(conn, "TRUNCATE TABLE adresses_egid")
         cur = conn.cursor()
         chunk = 1000
-        for i in range(0, len(unique_records), chunk):
+        total_chunks = (len(unique_records) + chunk - 1) // chunk
+        for idx, i in enumerate(range(0, len(unique_records), chunk)):
             execute_values(
                 cur,
                 "INSERT INTO adresses_egid (egid, adresse) VALUES %s ON CONFLICT DO NOTHING",
                 unique_records[i : i + chunk],
+            )
+            # Map DB write progress to the last 10% (0.9 → 1.0)
+            write_frac = (idx + 1) / total_chunks
+            _progress(0.9 + write_frac * 0.1)
+            _status(
+                f"Écriture en base : {min(i + chunk, len(unique_records)):,} / {len(unique_records):,} adresses"
             )
         cur.close()
     conn.close()
