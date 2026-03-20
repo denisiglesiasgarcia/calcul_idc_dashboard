@@ -17,8 +17,12 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def _get_conn():
-    """Open a psycopg2 connection using Streamlit secrets."""
+def _get_conn(statement_timeout_ms: int = 30_000):
+    """Open a psycopg2 connection using Streamlit secrets.
+
+    statement_timeout_ms: per-connection timeout in ms.
+    Use a higher value for bulk write operations.
+    """
     s = st.secrets["supabase"]
     return psycopg2.connect(
         host=s["host"],
@@ -27,7 +31,7 @@ def _get_conn():
         user=s["user"],
         password=s["password"],
         sslmode="require",
-        options="-c statement_timeout=30000",
+        options=f"-c statement_timeout={statement_timeout_ms}",
     )
 
 
@@ -114,7 +118,14 @@ def refresh_adresses_db(
 
     resp = requests.get(
         url,
-        params={"where": "1=1", "returnCountOnly": "true", "f": "json"},
+        params={
+            "where": "1=1",
+            "outFields": "adresse,egid",
+            "returnDistinctValues": "true",
+            "returnGeometry": "false",
+            "returnCountOnly": "true",
+            "f": "json",
+        },
         timeout=30,
     )
     resp.raise_for_status()
@@ -134,6 +145,7 @@ def refresh_adresses_db(
                     params={
                         "where": "1=1",
                         "outFields": "adresse,egid",
+                        "returnDistinctValues": "true",
                         "returnGeometry": "false",
                         "f": "json",
                         "resultOffset": offset,
@@ -187,7 +199,7 @@ def refresh_adresses_db(
     unique_records = df.rows()
 
     # Step 3: truncate and bulk insert with execute_values
-    conn = _get_conn()
+    conn = _get_conn(statement_timeout_ms=300_000)
     with conn:
         _execute(conn, "TRUNCATE TABLE adresses_egid")
         cur = conn.cursor()
