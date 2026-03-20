@@ -16,7 +16,7 @@ from sections.helpers.db import (
     save_favorite,
     load_favorites,
     delete_favorite,
-    DB_PATH,
+    get_all_addresses,
 )
 from sections.helpers.idc_api import fetch_idc_data
 from sections.helpers.idc_geo import convert_geometry_for_streamlit, show_map
@@ -48,31 +48,6 @@ CURRENT_YEAR = datetime.now().year
 init_history_table()
 init_favorites_table()
 
-@st.cache_data
-def get_all_addresses(db_path: str = DB_PATH) -> pl.DataFrame:
-    """
-    Load unique address/EGID pairs from SQLite, sorted by address.
-
-    DISTINCT is a safety net against any legacy duplicates that may have
-    been inserted before the PRIMARY KEY constraint was enforced.
-    """
-    abs_path = os.path.abspath(db_path)
-    conn = sqlite3.connect(abs_path)
-    try:
-        return pl.read_database(
-            query="SELECT DISTINCT adresse, egid FROM adresses_egid ORDER BY adresse",
-            connection=conn,
-        )
-    except Exception as e:
-        print(f"Error in get_all_addresses: {e}")
-        return pl.DataFrame(
-            {
-                "adresse": pl.Series([], dtype=pl.Utf8),
-                "egid": pl.Series([], dtype=pl.Utf8),
-            }
-        )
-    finally:
-        conn.close()
 
 if "address_multiselect" not in st.session_state:
     st.session_state["address_multiselect"] = []
@@ -132,7 +107,7 @@ with st.sidebar:
     st.divider()
     st.subheader("Favoris")
 
-    favorites = load_favorites(db_path=DB_PATH)
+    favorites = load_favorites()
 
     if not favorites:
         st.caption("Aucun favori enregistré.")
@@ -291,7 +266,9 @@ with tab3:
 
     # Transfer pending selection set by the address importer (runs before widget instantiation)
     if "_pending_multiselect" in st.session_state:
-        st.session_state["address_multiselect"] = st.session_state.pop("_pending_multiselect")
+        st.session_state["address_multiselect"] = st.session_state.pop(
+            "_pending_multiselect"
+        )
 
     selected_options = st.multiselect(
         label="Adresse",
@@ -323,7 +300,9 @@ with tab3:
                 for a in adresses_input
                 if a.lower() in adresse_to_display
             ]
-            not_found = {a for a in adresses_input if a.lower() not in adresse_to_display}
+            not_found = {
+                a for a in adresses_input if a.lower() not in adresse_to_display
+            }
 
             if matched:
                 # Use staging key — direct write after widget instantiation raises StreamlitAPIException

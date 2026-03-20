@@ -11,3 +11,4 @@ pip==24.2
 altair
 openpyxl
 polars
+psycopg2-binary
