@@ -7,6 +7,8 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 from datetime import datetime
+import os
+import tempfile
 
 import polars as pl
 import requests
@@ -14,10 +16,11 @@ import requests
 
 logging.basicConfig(level=logging.WARNING)
 
+DB_PATH = os.path.join(tempfile.gettempdir(), "adresses_egid.db")
 
 def refresh_adresses_db(
     url: str,
-    db_path: str = "adresses_egid.db",
+    db_path: str = DB_PATH,
     chunk_size: int = 2000,
     max_workers: int = 3,
     progress_bar=None,
@@ -181,7 +184,7 @@ def refresh_adresses_db(
 # Historique des consultations
 # ---------------------------------------------------------------------------
 
-def init_history_table(db_path: str = "adresses_egid.db") -> None:
+def init_history_table(db_path: str = DB_PATH) -> None:
     """
     Crée la table d'historique si elle n'existe pas.
     Appelée au démarrage de l'application — idempotente.
@@ -202,7 +205,7 @@ def init_history_table(db_path: str = "adresses_egid.db") -> None:
 
 def load_history(
     n: int = 20,
-    db_path: str = "adresses_egid.db",
+    db_path: str = DB_PATH,
 ) -> list[dict]:
     """
     Retourne les n dernières entrées de l'historique, ordre antéchronologique.
@@ -222,7 +225,7 @@ def load_history(
 
 def delete_history_entry(
     entry_id: int,
-    db_path: str = "adresses_egid.db",
+    db_path: str = DB_PATH,
 ) -> None:
     """Supprime une entrée d'historique par son id."""
     conn = sqlite3.connect(db_path)
@@ -232,7 +235,7 @@ def delete_history_entry(
 
 def save_history_entry(
     selected_options: list[str],
-    db_path: str = "adresses_egid.db",
+    db_path: str = DB_PATH,
 ) -> None:
     """
     Sauvegarde un groupe d'adresses dans l'historique.
@@ -258,7 +261,7 @@ def save_history_entry(
 
 
 # ── ADDED: favorites ───────────────────────────────────────────────────────
-def init_favorites_table(db_path: str = "adresses_egid.db") -> None:
+def init_favorites_table(db_path: str = DB_PATH) -> None:
     """
     Crée la table des favoris si elle n'existe pas. Idempotente.
     UNIQUE sur labels (JSON trié) — évite les doublons au niveau DB.
@@ -278,7 +281,7 @@ def init_favorites_table(db_path: str = "adresses_egid.db") -> None:
 def save_favorite(
     name: str,
     labels: list[str],
-    db_path: str = "adresses_egid.db",
+    db_path: str = DB_PATH,
 ) -> bool:
     """
     Sauvegarde un favori. Retourne False si le groupe d'adresses existe déjà.
@@ -299,7 +302,7 @@ def save_favorite(
         conn.close()
 
 
-def load_favorites(db_path: str = "adresses_egid.db") -> list[dict]:
+def load_favorites(db_path: str = DB_PATH) -> list[dict]:
     """
     Retourne tous les favoris triés par nom.
     Chaque entrée : {"id": int, "name": str, "labels": list[str]}
@@ -312,7 +315,7 @@ def load_favorites(db_path: str = "adresses_egid.db") -> list[dict]:
     return [{"id": r[0], "name": r[1], "labels": json.loads(r[2])} for r in rows]
 
 
-def delete_favorite(fav_id: int, db_path: str = "adresses_egid.db") -> None:
+def delete_favorite(fav_id: int, db_path: str = DB_PATH) -> None:
     """Supprime un favori par son id."""
     conn = sqlite3.connect(db_path)
     conn.execute("DELETE FROM adresses_favorites WHERE id = ?", (fav_id,))

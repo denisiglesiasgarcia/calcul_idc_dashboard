@@ -16,6 +16,7 @@ from sections.helpers.db import (
     save_favorite,
     load_favorites,
     delete_favorite,
+    DB_PATH,
 )
 from sections.helpers.idc_api import fetch_idc_data
 from sections.helpers.idc_geo import convert_geometry_for_streamlit, show_map
@@ -48,7 +49,7 @@ init_history_table()
 init_favorites_table()
 
 @st.cache_data
-def get_all_addresses(db_path: str = "adresses_egid.db") -> pl.DataFrame:
+def get_all_addresses(db_path: str = DB_PATH) -> pl.DataFrame:
     """
     Load unique address/EGID pairs from SQLite, sorted by address.
 
@@ -131,7 +132,7 @@ with st.sidebar:
     st.divider()
     st.subheader("Favoris")
 
-    favorites = load_favorites()
+    favorites = load_favorites(db_path=DB_PATH)
 
     if not favorites:
         st.caption("Aucun favori enregistré.")
