@@ -24,6 +24,8 @@ def _get_conn():
         dbname=s["dbname"],
         user=s["user"],
         password=s["password"],
+        sslmode="require",
+        options="-c statement_timeout=30000",
     )
 
 
