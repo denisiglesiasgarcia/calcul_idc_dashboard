@@ -17,6 +17,7 @@ logger.setLevel(logging.INFO)
 
 
 def _get_conn():
+    """Open a psycopg2 connection using Streamlit secrets."""
     s = st.secrets["supabase"]
     return psycopg2.connect(
         host=s["host"],
@@ -29,22 +30,28 @@ def _get_conn():
     )
 
 
+def _execute(conn, sql: str, params=None) -> None:
+    """Execute a single statement via cursor. Always pass a connection, not a cursor."""
+    cur = conn.cursor()
+    cur.execute(sql, params)
+    cur.close()
+
+
 # ---------------------------------------------------------------------------
 # Schema init — idempotent, called at app startup
 # ---------------------------------------------------------------------------
 
-
 def init_history_table() -> None:
     conn = _get_conn()
     with conn:
-        conn.execute("""
+        _execute(conn, """
             CREATE TABLE IF NOT EXISTS consultation_history (
                 id     SERIAL PRIMARY KEY,
                 ts     TEXT NOT NULL,
                 labels TEXT NOT NULL
             )
         """)
-        conn.execute("""
+        _execute(conn, """
             CREATE INDEX IF NOT EXISTS idx_history_ts
             ON consultation_history (ts DESC)
         """)
@@ -54,7 +61,7 @@ def init_history_table() -> None:
 def init_favorites_table() -> None:
     conn = _get_conn()
     with conn:
-        conn.execute("""
+        _execute(conn, """
             CREATE TABLE IF NOT EXISTS adresses_favorites (
                 id     SERIAL PRIMARY KEY,
                 name   TEXT NOT NULL,
@@ -68,7 +75,6 @@ def init_favorites_table() -> None:
 # Address cache
 # ---------------------------------------------------------------------------
 
-
 def refresh_adresses_db(
     url: str,
     chunk_size: int = 2000,
@@ -78,7 +84,7 @@ def refresh_adresses_db(
 ) -> int:
     """
     Fetch all address/EGID pairs from SITG and rebuild the Supabase table.
-    Strategy: parallel fetch with retry, then bulk COPY via psycopg2.
+    Strategy: parallel fetch with retry, then bulk insert in chunks of 1000.
     """
 
     def _status(msg: str) -> None:
@@ -101,7 +107,6 @@ def refresh_adresses_db(
     )
     resp.raise_for_status()
     total_count = resp.json().get("count", 0)
-
     _status(f"{total_count:,} adresses trouvées — téléchargement...")
 
     offsets = list(range(0, total_count, chunk_size))
@@ -135,9 +140,7 @@ def refresh_adresses_db(
                 if attempt == 3:
                     raise
                 wait = 2 ** (attempt + 1)
-                logger.warning(
-                    f"offset={offset} attempt {attempt + 1}/4 failed, retry in {wait}s"
-                )
+                logger.warning(f"offset={offset} attempt {attempt+1}/4 failed, retry in {wait}s")
                 time.sleep(wait)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -158,22 +161,19 @@ def refresh_adresses_db(
     # Step 2: deduplicate with Polars
     _status("Dédoublonnage et écriture en base...")
     df = (
-        pl.DataFrame(
-            {
-                "egid": [r[0] for r in all_records],
-                "adresse": [r[1] for r in all_records],
-            }
-        )
+        pl.DataFrame({
+            "egid": [r[0] for r in all_records],
+            "adresse": [r[1] for r in all_records],
+        })
         .unique()
         .sort("adresse")
     )
-    unique_records = df.rows()  # list of (egid, adresse)
+    unique_records = df.rows()
 
-    # Step 3: rebuild table and bulk insert
+    # Step 3: truncate and bulk insert in chunks of 1000
     conn = _get_conn()
     with conn:
-        conn.execute("TRUNCATE TABLE adresses_egid")
-        # executemany in chunks of 1000 to avoid parameter limits
+        _execute(conn, "TRUNCATE TABLE adresses_egid")
         cur = conn.cursor()
         chunk = 1000
         for i in range(0, len(unique_records), chunk):
@@ -181,6 +181,7 @@ def refresh_adresses_db(
                 "INSERT INTO adresses_egid (egid, adresse) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                 unique_records[i : i + chunk],
             )
+        cur.close()
     conn.close()
 
     _progress(1.0)
@@ -191,7 +192,6 @@ def refresh_adresses_db(
 # ---------------------------------------------------------------------------
 # History
 # ---------------------------------------------------------------------------
-
 
 def save_history_entry(selected_options: list[str]) -> None:
     labels_json = json.dumps(sorted(selected_options), ensure_ascii=False)
@@ -206,6 +206,7 @@ def save_history_entry(selected_options: list[str]) -> None:
                 "INSERT INTO consultation_history (ts, labels) VALUES (%s, %s)",
                 (datetime.utcnow().isoformat(), labels_json),
             )
+        cur.close()
     conn.close()
 
 
@@ -213,10 +214,10 @@ def load_history(n: int = 20) -> list[dict]:
     conn = _get_conn()
     cur = conn.cursor()
     cur.execute(
-        "SELECT id, ts, labels FROM consultation_history ORDER BY ts DESC LIMIT %s",
-        (n,),
+        "SELECT id, ts, labels FROM consultation_history ORDER BY ts DESC LIMIT %s", (n,)
     )
     rows = cur.fetchall()
+    cur.close()
     conn.close()
     return [{"id": r[0], "ts": r[1], "labels": json.loads(r[2])} for r in rows]
 
@@ -224,7 +225,7 @@ def load_history(n: int = 20) -> list[dict]:
 def delete_history_entry(entry_id: int) -> None:
     conn = _get_conn()
     with conn:
-        conn.execute("DELETE FROM consultation_history WHERE id = %s", (entry_id,))
+        _execute(conn, "DELETE FROM consultation_history WHERE id = %s", (entry_id,))
     conn.close()
 
 
@@ -232,13 +233,13 @@ def delete_history_entry(entry_id: int) -> None:
 # Favorites
 # ---------------------------------------------------------------------------
 
-
 def save_favorite(name: str, labels: list[str]) -> bool:
     labels_json = json.dumps(sorted(labels), ensure_ascii=False)
     conn = _get_conn()
     try:
         with conn:
-            conn.execute(
+            _execute(
+                conn,
                 "INSERT INTO adresses_favorites (name, labels) VALUES (%s, %s)",
                 (name, labels_json),
             )
@@ -254,6 +255,7 @@ def load_favorites() -> list[dict]:
     cur = conn.cursor()
     cur.execute("SELECT id, name, labels FROM adresses_favorites ORDER BY name")
     rows = cur.fetchall()
+    cur.close()
     conn.close()
     return [{"id": r[0], "name": r[1], "labels": json.loads(r[2])} for r in rows]
 
@@ -261,14 +263,13 @@ def load_favorites() -> list[dict]:
 def delete_favorite(fav_id: int) -> None:
     conn = _get_conn()
     with conn:
-        conn.execute("DELETE FROM adresses_favorites WHERE id = %s", (fav_id,))
+        _execute(conn, "DELETE FROM adresses_favorites WHERE id = %s", (fav_id,))
     conn.close()
 
 
 # ---------------------------------------------------------------------------
-# Liste des adresses pour le selecteur
+# Address selector
 # ---------------------------------------------------------------------------
-
 
 @st.cache_data
 def get_all_addresses() -> pl.DataFrame:
@@ -281,11 +282,9 @@ def get_all_addresses() -> pl.DataFrame:
         )
     except Exception as e:
         logger.error(f"get_all_addresses failed: {e}")
-        return pl.DataFrame(
-            {
-                "adresse": pl.Series([], dtype=pl.Utf8),
-                "egid": pl.Series([], dtype=pl.Utf8),
-            }
-        )
+        return pl.DataFrame({
+            "adresse": pl.Series([], dtype=pl.Utf8),
+            "egid": pl.Series([], dtype=pl.Utf8),
+        })
     finally:
         conn.close()
