@@ -42,39 +42,50 @@ def _execute(conn, sql: str, params=None) -> None:
 # Schema init — idempotent, called at app startup
 # ---------------------------------------------------------------------------
 
+
 def init_history_table() -> None:
     conn = _get_conn()
     with conn:
-        _execute(conn, """
+        _execute(
+            conn,
+            """
             CREATE TABLE IF NOT EXISTS consultation_history (
                 id     SERIAL PRIMARY KEY,
                 ts     TEXT NOT NULL,
                 labels TEXT NOT NULL
             )
-        """)
-        _execute(conn, """
+        """,
+        )
+        _execute(
+            conn,
+            """
             CREATE INDEX IF NOT EXISTS idx_history_ts
             ON consultation_history (ts DESC)
-        """)
+        """,
+        )
     conn.close()
 
 
 def init_favorites_table() -> None:
     conn = _get_conn()
     with conn:
-        _execute(conn, """
+        _execute(
+            conn,
+            """
             CREATE TABLE IF NOT EXISTS adresses_favorites (
                 id     SERIAL PRIMARY KEY,
                 name   TEXT NOT NULL,
                 labels TEXT NOT NULL UNIQUE
             )
-        """)
+        """,
+        )
     conn.close()
 
 
 # ---------------------------------------------------------------------------
 # Address cache
 # ---------------------------------------------------------------------------
+
 
 def refresh_adresses_db(
     url: str,
@@ -141,7 +152,9 @@ def refresh_adresses_db(
                 if attempt == 3:
                     raise
                 wait = 2 ** (attempt + 1)
-                logger.warning(f"offset={offset} attempt {attempt+1}/4 failed, retry in {wait}s")
+                logger.warning(
+                    f"offset={offset} attempt {attempt + 1}/4 failed, retry in {wait}s"
+                )
                 time.sleep(wait)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -162,10 +175,12 @@ def refresh_adresses_db(
     # Step 2: deduplicate with Polars
     _status("Dédoublonnage et écriture en base...")
     df = (
-        pl.DataFrame({
-            "egid": [r[0] for r in all_records],
-            "adresse": [r[1] for r in all_records],
-        })
+        pl.DataFrame(
+            {
+                "egid": [r[0] for r in all_records],
+                "adresse": [r[1] for r in all_records],
+            }
+        )
         .unique()
         .sort("adresse")
     )
@@ -202,6 +217,7 @@ def refresh_adresses_db(
 # History
 # ---------------------------------------------------------------------------
 
+
 def save_history_entry(selected_options: list[str]) -> None:
     labels_json = json.dumps(sorted(selected_options), ensure_ascii=False)
     conn = _get_conn()
@@ -223,7 +239,8 @@ def load_history(n: int = 20) -> list[dict]:
     conn = _get_conn()
     cur = conn.cursor()
     cur.execute(
-        "SELECT id, ts, labels FROM consultation_history ORDER BY ts DESC LIMIT %s", (n,)
+        "SELECT id, ts, labels FROM consultation_history ORDER BY ts DESC LIMIT %s",
+        (n,),
     )
     rows = cur.fetchall()
     cur.close()
@@ -241,6 +258,7 @@ def delete_history_entry(entry_id: int) -> None:
 # ---------------------------------------------------------------------------
 # Favorites
 # ---------------------------------------------------------------------------
+
 
 def save_favorite(name: str, labels: list[str]) -> bool:
     labels_json = json.dumps(sorted(labels), ensure_ascii=False)
@@ -280,6 +298,7 @@ def delete_favorite(fav_id: int) -> None:
 # Address selector
 # ---------------------------------------------------------------------------
 
+
 @st.cache_data
 def get_all_addresses() -> pl.DataFrame:
     """Load address/EGID pairs from Supabase, sorted by address."""
@@ -291,9 +310,11 @@ def get_all_addresses() -> pl.DataFrame:
         )
     except Exception as e:
         logger.error(f"get_all_addresses failed: {e}")
-        return pl.DataFrame({
-            "adresse": pl.Series([], dtype=pl.Utf8),
-            "egid": pl.Series([], dtype=pl.Utf8),
-        })
+        return pl.DataFrame(
+            {
+                "adresse": pl.Series([], dtype=pl.Utf8),
+                "egid": pl.Series([], dtype=pl.Utf8),
+            }
+        )
     finally:
         conn.close()
