@@ -206,7 +206,7 @@ def refresh_adresses_db(
     cur.execute("TRUNCATE TABLE adresses_egid")
     conn.commit()
 
-    chunk = 100
+    chunk = 1000
     total_chunks = (len(unique_records) + chunk - 1) // chunk
     for idx, i in enumerate(range(0, len(unique_records), chunk)):
         execute_values(
