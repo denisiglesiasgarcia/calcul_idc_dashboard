@@ -49,34 +49,84 @@ def convert_geometry_for_streamlit(data: List[Dict]) -> Tuple:
     return geojson, centroid
 
 
-# NOTE: @st.cache_data intentionally omitted — renders a Streamlit widget
 def show_map(data: List[Dict], centroid: Tuple[float, float]) -> None:
     """Render a PyDeck GeoJSON map centred on the selected buildings."""
+
+    # Couleur dynamique selon IDC : vert (bas) → rouge (élevé)
+    # Si IDC absent, fallback sur rouge neutre
+    def _idc_to_color(feature: Dict) -> List[int]:
+        idc = feature.get("properties", {}).get("indice_calcule", None)
+        if idc is None:
+            return [200, 100, 100, 200]
+        # Normalise entre 0 (≤150) et 1 (≥600)
+        t = max(0.0, min(1.0, (idc - 150) / 450))
+        r = int(50 + t * 205)  # 50 → 255
+        g = int(200 - t * 180)  # 200 → 20
+        return [r, g, 50, 200]
+
+    # Injecte la couleur dans chaque feature pour GeoJsonLayer
+    colored_data = {
+        "type": "FeatureCollection",
+        "features": [
+            {**f, "properties": {**f["properties"], "_color": _idc_to_color(f)}}
+            for f in data["features"]
+        ],
+    }
+
+    # Zoom adaptatif depuis l'étendue lon/lat des polygones
+    all_coords = [
+        pt
+        for f in data["features"]
+        for ring in f["geometry"]["coordinates"]
+        for pt in ring
+    ]
+    if all_coords:
+        lons = [c[0] for c in all_coords]
+        lats = [c[1] for c in all_coords]
+        span = max(max(lons) - min(lons), max(lats) - min(lats))
+        # Approximation : zoom inversement proportionnel à l'étendue
+        zoom = max(13, min(19, round(14 - np.log2(span * 1000 + 1))))
+    else:
+        zoom = 17
+
     layer = pdk.Layer(
         "GeoJsonLayer",
-        data,
-        opacity=0.8,
-        stroked=False,
+        colored_data,
+        opacity=0.85,
+        stroked=True,
         filled=True,
         extruded=False,
-        get_fill_color=[255, 0, 0, 200],
-        get_line_color=[0, 0, 0],
+        get_fill_color="properties._color",
+        get_line_color=[60, 60, 60],
+        line_width_min_pixels=1,
         pickable=True,
         auto_highlight=True,
     )
+
     view_state = pdk.ViewState(
         latitude=centroid[1],
         longitude=centroid[0],
-        zoom=17,
-        pitch=45,
+        zoom=zoom,
+        pitch=0,  # vue plane — extrusion désactivée
     )
+
     deck = pdk.Deck(
         layers=[layer],
         initial_view_state=view_state,
-        map_style="mapbox://styles/mapbox/light-v9",
+        map_style="road",  # style intégré PyDeck, pas de token requis
         tooltip={
-            "html": "<b>EGID:</b> {egid}<br/><b>Adresse:</b> {adresse}<br/><b>SRE:</b> {sre} m²",
-            "style": {"backgroundColor": "steelblue", "color": "white"},
+            "html": (
+                "<b>EGID :</b> {egid}<br/>"
+                "<b>Adresse :</b> {adresse}<br/>"
+                "<b>SRE :</b> {sre} m²<br/>"
+                "<b>IDC :</b> {indice_calcule} MJ/m²<br/>"
+                "<b>Agent :</b> {agent_energetique_ef_1}"
+            ),
+            "style": {
+                "backgroundColor": "#1e1e2e",
+                "color": "white",
+                "fontSize": "13px",
+            },
         },
     )
-    st.pydeck_chart(deck)
+    st.pydeck_chart(deck, use_container_width=True)
