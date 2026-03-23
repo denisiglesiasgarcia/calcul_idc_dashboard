@@ -469,65 +469,94 @@ def show_sre_table(
 
 
 def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
-    """
-    Display four KPI metrics above the chart:
-      - Latest year IDC (SRE-weighted across all selected buildings)
-      - 3-year rolling average (from API field indice_moy3, SRE-weighted)
-      - Reference threshold (configurable via sidebar)
-      - Compliance status
-
-    SRE weighting ensures larger buildings are not treated equally to smaller
-    ones when multiple EGIDs are selected.
-    """
     df = pl.from_dicts(data_df).with_columns(
         [
             pl.col("sre").cast(pl.Float64),
             pl.col("indice").cast(pl.Float64),
-            pl.col("indice_moy3").cast(pl.Float64),
         ]
     )
 
     latest_year = df["annee"].max()
     df_latest = df.filter(pl.col("annee") == latest_year)
-
     total_sre = df_latest["sre"].sum()
 
+    # IDC pondéré SRE pour la dernière année
     if total_sre and total_sre > 0:
         idc_current = (df_latest["indice"] * df_latest["sre"]).sum() / total_sre
-
-        df_moy3 = df_latest.filter(pl.col("indice_moy3").is_not_null())
-        sre_moy3 = df_moy3["sre"].sum()
-        idc_moy3 = (
-            (df_moy3["indice_moy3"] * df_moy3["sre"]).sum() / sre_moy3
-            if sre_moy3 and sre_moy3 > 0
-            else None
-        )
-        idc_moy3_years = df_latest["annees_concernees_moy_3"].drop_nulls().to_list()
     else:
-        # Fallback to simple mean when SRE is missing
         idc_current = df_latest["indice"].mean()
-        idc_moy3_series = df_latest["indice_moy3"].drop_nulls()
-        idc_moy3 = idc_moy3_series.mean() if len(idc_moy3_series) > 0 else None
-        idc_moy3_years = "N/A"
+
+    # Moy3 pondérée SRE calculée — même logique que _show_groupby_annee
+    df_moy3 = (
+        df.group_by("annee")
+        .agg(
+            [
+                (pl.col("indice") * pl.col("sre")).sum().alias("_indice_x_sre"),
+                pl.col("sre").sum().alias("_sre_total"),
+            ]
+        )
+        .with_columns(
+            (pl.col("_indice_x_sre") / pl.col("_sre_total"))
+            .round(0)
+            .alias("indice_pondere")
+        )
+        .drop(["_indice_x_sre", "_sre_total"])
+        .sort("annee")
+        .with_columns(
+            pl.col("indice_pondere")
+            .cast(pl.Float64)
+            .rolling_mean(window_size=3, min_periods=3)
+            .round(0)
+            .alias("indice_pondere_moy3")
+        )
+        # Reconstruit le label des 3 années incluses
+        .with_columns(
+            [
+                pl.col("annee").shift(2).alias("_y2"),
+                pl.col("annee").shift(1).alias("_y1"),
+            ]
+        )
+        .with_columns(
+            pl.when(pl.col("indice_pondere_moy3").is_not_null())
+            .then(
+                pl.col("_y2").cast(pl.Utf8)
+                + ", "
+                + pl.col("_y1").cast(pl.Utf8)
+                + ", "
+                + pl.col("annee").cast(pl.Utf8)
+            )
+            .otherwise(pl.lit(None))
+            .alias("annees_moy3_label")
+        )
+        .drop(["_y2", "_y1"])
+        .filter(pl.col("indice_pondere_moy3").is_not_null())
+    )
+
+    # Dernière valeur disponible (peut être antérieure à latest_year si données manquantes)
+    if len(df_moy3) > 0:
+        last_moy3_row = df_moy3.sort("annee").tail(1)
+        idc_moy3 = last_moy3_row["indice_pondere_moy3"][0]
+        idc_moy3_label = last_moy3_row["annees_moy3_label"][0]  # ex: "2022, 2023, 2024"
+    else:
+        idc_moy3 = None
+        idc_moy3_label = None
 
     delta_abs = idc_current - seuil
 
     if seuil > 0:
         col1, col2, col3 = st.columns(3)
-
         with col1:
             st.metric(
                 label=f"IDC pondéré ({latest_year})",
                 value=f"{idc_current:.0f} MJ/m²",
                 delta=f"{delta_abs:+.0f} MJ/m² vs seuil",
-                # red when above threshold (inverse: positive delta = bad)
                 delta_color="inverse",
             )
         with col2:
             st.metric(
-                label=f"Moy. 3 ans ({', '.join(idc_moy3_years) if idc_moy3_years else 'N/A'})",
+                label=f"Moy. 3 ans ({idc_moy3_label or 'N/A'})",
                 value=f"{idc_moy3:.0f} MJ/m²" if idc_moy3 is not None else "N/A",
-                help="Valeur indice_moy3 issue de la base SITG, pondérée par SRE.",
+                help="Moyenne pondérée SRE sur 3 ans, calculée depuis les données brutes.",
             )
         with col3:
             st.metric(
@@ -535,9 +564,8 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
                 value=f"{seuil} MJ/m²",
                 help="Seuil indicatif configurable dans la barre latérale.",
             )
-    elif seuil == 0:
+    else:
         col1, col2 = st.columns(2)
-
         with col1:
             st.metric(
                 label=f"IDC pondéré ({latest_year})",
@@ -545,7 +573,7 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
             )
         with col2:
             st.metric(
-                label=f"Moy. 3 ans ({', '.join(idc_moy3_years) if idc_moy3_years else 'N/A'})",
+                label=f"Moy. 3 ans ({idc_moy3_label or 'N/A'})",
                 value=f"{idc_moy3:.0f} MJ/m²" if idc_moy3 is not None else "N/A",
-                help="Valeur indice_moy3 issue de la base SITG, pondérée par SRE.",
+                help="Moyenne pondérée SRE sur 3 ans, calculée depuis les données brutes.",
             )
