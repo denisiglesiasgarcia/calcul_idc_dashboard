@@ -660,6 +660,9 @@ def show_kpis(
         st.metric(
             label="Années sans données",
             value=str(n_missing) if n_missing > 0 else "Aucune",
+            delta=f"{missing_label}" if n_missing > 0 else "",
+            delta_color="off",
+            delta_arrow="off",
             help=f"Années manquantes dans la plage sélectionnée : {missing_label}",
         )
     with col5:
