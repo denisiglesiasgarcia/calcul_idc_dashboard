@@ -688,5 +688,3 @@ def show_kpis(
             delta_arrow=arrow_col6,
             help="Variation de la SRE totale entre première et dernière année.",
         )
-    st.divider()
-
