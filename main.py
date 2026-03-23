@@ -254,14 +254,14 @@ with tab3:
             help="Ajouter les résultats filtrés à la sélection",
         ):
             current = set(st.session_state["address_multiselect"])
-            st.session_state["address_multiselect"] = list(
-                current | set(filtered_options)
-            )
+            st.session_state["address_multiselect"] = list(current | set(filtered_options))
+            st.session_state["address_search_filter"] = ""  # réinitialise le filtre
             st.rerun()
 
     with col_clear:
         if st.button("Aucun", use_container_width=True, help="Vider la sélection"):
             st.session_state["address_multiselect"] = []
+            st.session_state["address_search_filter"] = ""  # réinitialise le filtre
             st.rerun()
 
     # Transfer pending selection set by the address importer (runs before widget instantiation)
