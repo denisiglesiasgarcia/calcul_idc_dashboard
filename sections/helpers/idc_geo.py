@@ -51,7 +51,7 @@ def convert_geometry_for_streamlit(data: List[Dict]) -> Tuple:
 
 def show_map(data: List[Dict], centroid: Tuple[float, float]) -> None:
     """Render a PyDeck GeoJSON map centred on the selected buildings."""
-
+    st.write(data["features"][0]["properties"])
     # Couleur dynamique selon IDC : vert (bas) → rouge (élevé)
     # Si IDC absent, fallback sur rouge neutre
     def _idc_to_color(feature: Dict) -> List[int]:
@@ -84,10 +84,10 @@ def show_map(data: List[Dict], centroid: Tuple[float, float]) -> None:
         lons = [c[0] for c in all_coords]
         lats = [c[1] for c in all_coords]
         span = max(max(lons) - min(lons), max(lats) - min(lats))
-        # Approximation : zoom inversement proportionnel à l'étendue
-        zoom = max(13, min(19, round(14 - np.log2(span * 1000 + 1))))
+        # Formule standard : 360° correspond au zoom 0, chaque doublement = +1 zoom
+        zoom = max(14, min(19, np.log2(0.2 / (span + 1e-9)) + 16))
     else:
-        zoom = 17
+        zoom = 18
 
     layer = pdk.Layer(
         "GeoJsonLayer",
