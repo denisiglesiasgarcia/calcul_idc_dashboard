@@ -367,7 +367,7 @@ try:
             #######################################################################
             st.divider()
             # KPI row
-            st.subheader("Derniers indicateurs clés disponibles")
+            st.subheader("Chiffres-clé")
             show_kpis(data_df, seuil=seuil, year_range=year_range)
 
             # Historical bar chart
