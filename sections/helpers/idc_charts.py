@@ -388,7 +388,7 @@ def create_barplot(
 
     st.plotly_chart(
         fig,
-        use_container_width=False,
+        use_container_width=True,
         config={
             "toImageButtonOptions": {
                 "format": "png",
