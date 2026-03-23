@@ -608,7 +608,7 @@ def show_kpis(
         n_changed = len(changed)
         n_egids_total = df["egid"].n_unique()
         agent_value = (
-            f"{n_changed}/{n_egids_total} bâtiment(s)" if n_changed > 0 else "Aucun"
+            f"{n_changed}/{n_egids_total}" if n_changed > 0 else "Aucun"
         )
     else:
         agent_value = "N/A"
@@ -623,28 +623,7 @@ def show_kpis(
         sre_delta = None
         sre_delta_pct = None
 
-    # Coefficient de variation inter-bâtiments
-    n_egids = df["egid"].n_unique()
-    if n_egids >= 2:
-        idc_by_egid = (
-            df_latest.group_by("egid")
-            .agg(
-                pl.when(pl.col("sre").sum() > 0)
-                .then((pl.col("indice") * pl.col("sre")).sum() / pl.col("sre").sum())
-                .otherwise(pl.col("indice").mean())
-                .alias("idc_egid")
-            )
-            .filter(pl.col("idc_egid").is_not_null())
-        )
-        if len(idc_by_egid) >= 2:
-            mean_idc = idc_by_egid["idc_egid"].mean()
-            std_idc = idc_by_egid["idc_egid"].std()
-            cv = (std_idc / mean_idc * 100) if mean_idc and mean_idc > 0 else None
-        else:
-            cv = None
-    else:
-        cv = None
-
+    # Variation absolue IDC vs seuil
     delta_abs = idc_current - seuil
 
     # ── Ligne 1 : IDC / moy3 / seuil ──────────────────────────────────────────
@@ -671,9 +650,11 @@ def show_kpis(
         )
     with col3:
         st.metric(
-            label=f"Évolution ({first_year}→{latest_year})",
+            label=f"Évolution IDC ({first_year}→{latest_year})",
             value=f"{ratio:+.1f} %" if ratio is not None else "N/A",
             help="Variation relative de l'IDC pondéré entre première et dernière année de la période.",
+            delta=f"{idc_first:+.0f} → {idc_current:+.0f} MJ/m²" if idc_first is not None and idc_current is not None else "N/A",
+            delta_color="off",
         )
     with col4:
         st.metric(
@@ -691,7 +672,7 @@ def show_kpis(
         st.metric(
             label=f"Variation SRE ({first_year}→{latest_year})",
             value=f"{sre_delta:+.0f} m²" if sre_delta is not None else "N/A",
-            delta=f"{sre_delta_pct:+.1f} %" if sre_delta_pct is not None else None,
+            delta=f"{sre_first:+.0f} → {sre_last:+.0f} m²" if sre_first is not None and sre_last is not None else "N/A",
             delta_color="off",
             help="Variation de la SRE totale entre première et dernière année.",
         )
