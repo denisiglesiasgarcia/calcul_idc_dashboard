@@ -1,7 +1,5 @@
 # /main.py
 
-import os
-import sqlite3
 from datetime import datetime
 import polars as pl
 import streamlit as st
@@ -232,6 +230,12 @@ with tab3:
     # External filter + bulk action buttons
     col_search, col_all, col_clear = st.columns([6, 1, 1])
 
+    # Applique la réinitialisation du filtre demandée par Tout/Aucun
+    if "_pending_search_filter" in st.session_state:
+        st.session_state["address_search_filter"] = st.session_state.pop(
+            "_pending_search_filter"
+        )
+
     with col_search:
         search_filter = st.text_input(
             "Filtrer",
@@ -254,14 +258,16 @@ with tab3:
             help="Ajouter les résultats filtrés à la sélection",
         ):
             current = set(st.session_state["address_multiselect"])
-            st.session_state["address_multiselect"] = list(current | set(filtered_options))
-            st.session_state["address_search_filter"] = ""  # réinitialise le filtre
+            st.session_state["address_multiselect"] = list(
+                current | set(filtered_options)
+            )
+            st.session_state["_pending_search_filter"] = ""
             st.rerun()
 
     with col_clear:
         if st.button("Aucun", use_container_width=True, help="Vider la sélection"):
             st.session_state["address_multiselect"] = []
-            st.session_state["address_search_filter"] = ""  # réinitialise le filtre
+            st.session_state["_pending_search_filter"] = ""
             st.rerun()
 
     # Transfer pending selection set by the address importer (runs before widget instantiation)
