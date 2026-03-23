@@ -637,13 +637,21 @@ def show_kpis(
     elif seuil == 0:
         with col1:
             st.metric(
-                label=f"Dernier IDC pondéré ({latest_year})",
+                label="Dernier IDC pondéré",
                 value=f"{idc_current:.0f} MJ/m²",
+                delta=f"{latest_year}" if latest_year is not None else "",
+                delta_color="off",
+                delta_arrow="off",
+                help="IDC pondéré par SRE pour la dernière année disponible.",
+
             )
     with col2:
         st.metric(
-            label=f"Moy. 3 ans ({idc_moy3_label or 'N/A'})",
+            label="Dernier IDC moy. 3 ans",
             value=f"{idc_moy3:.0f} MJ/m²" if idc_moy3 is not None else "N/A",
+            delta=f"{idc_moy3_label}" if idc_moy3_label else "",
+            delta_color="off",
+            delta_arrow="off",
             help="Moyenne pondérée SRE sur 3 ans glissants.",
         )
     with col3:
