@@ -85,7 +85,7 @@ def show_map(data: List[Dict], centroid: Tuple[float, float]) -> None:
         lats = [c[1] for c in all_coords]
         span = max(max(lons) - min(lons), max(lats) - min(lats))
         # Formule standard : 360° correspond au zoom 0, chaque doublement = +1 zoom
-        zoom = max(14, min(19, np.log2(0.2 / (span + 1e-9)) + 16))
+        zoom = max(14, min(19, np.log2(0.2 / (span + 1e-9)) + 16))+1
     else:
         zoom = 18
 
