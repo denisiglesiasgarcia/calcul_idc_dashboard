@@ -683,7 +683,6 @@ def show_kpis(
             label=f"Variation SRE ({first_year}→{latest_year})",
             value=f"{sre_delta:+.0f} m²" if sre_delta is not None else "N/A" if sre_delta == 0 else "",
             delta=f"{sre_first:+.0f} → {sre_last:+.0f} m²" if sre_delta != 0 and sre_first is not None and sre_last is not None else "",
-            delta_color="off",
             delta_arrow=arrow_col6,
             help="Variation de la SRE totale entre première et dernière année.",
         )
