@@ -51,7 +51,7 @@ def convert_geometry_for_streamlit(data: List[Dict]) -> Tuple:
 
 def show_map(data: List[Dict], centroid: Tuple[float, float]) -> None:
     """Render a PyDeck GeoJSON map centred on the selected buildings."""
-    st.write(data["features"][0]["properties"])
+
     # Couleur dynamique selon IDC : vert (bas) → rouge (élevé)
     # Si IDC absent, fallback sur rouge neutre
     def _idc_to_color(feature: Dict) -> List[int]:
@@ -110,6 +110,19 @@ def show_map(data: List[Dict], centroid: Tuple[float, float]) -> None:
         pitch=0,  # vue plane — extrusion désactivée
     )
 
+    def _clean_agents(props: Dict) -> Dict:
+        cleaned = dict(props)
+        for i in (2, 3):
+            agent = cleaned.get(f"agent_energetique_{i}")
+            qte = cleaned.get(f"quantite_agent_energetique_{i}")
+            unite = cleaned.get(f"unite_agent_energetique_{i}", "")
+            # Construit un label complet ou chaîne vide
+            cleaned[f"_agent_{i}_label"] = (
+                f"<b>Agent {i} :</b> {agent} — {qte} {unite or ''}"
+                if agent else ""
+            )
+        return cleaned
+
     deck = pdk.Deck(
         layers=[layer],
         initial_view_state=view_state,
@@ -121,8 +134,8 @@ def show_map(data: List[Dict], centroid: Tuple[float, float]) -> None:
                 "<b>SRE :</b> {sre} m²<br/>"
                 "<b>IDC :</b> {indice} MJ/m² ({annee})<br/>"
                 "<b>Agent 1 :</b> {agent_energetique_1} — {quantite_agent_energetique_1} {unite_agent_energetique_1}<br/>"
-                "<b>Agent 2 :</b> {agent_energetique_2} — {quantite_agent_energetique_2} {unite_agent_energetique_2}<br/>"
-                "<b>Agent 3 :</b> {agent_energetique_3} — {quantite_agent_energetique_3} {unite_agent_energetique_3}"
+                "{_agent_2_label}<br/>"
+                "{_agent_3_label}"
             ),
             "style": {"backgroundColor": "#1e1e2e", "color": "white", "fontSize": "13px"},
         },
