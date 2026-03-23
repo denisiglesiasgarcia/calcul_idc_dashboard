@@ -376,9 +376,9 @@ try:
             title = ", ".join(adresses_titre)
             create_barplot(data_df, title, seuil=seuil, year_range=year_range)
 
+            #######################################################################
+            st.divider()
             if st.checkbox("Afficher les données IDC"):
-                #######################################################################
-                st.divider()
                 show_dataframe(data_df, seuil=seuil, year_range=year_range)
         else:
             st.error(
