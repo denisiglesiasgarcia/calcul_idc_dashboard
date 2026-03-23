@@ -333,6 +333,8 @@ if selected_options:
 # ---------------------------------------------------------------------------------------
 try:
     if selected_options and len(st.session_state.get("data_verif_idc", [])) > 0:
+        #######################################################################
+        st.divider()
         st.subheader("Plan de situation")
 
         egids = st.session_state["data_verif_idc"]["egid"].to_list()
@@ -362,6 +364,8 @@ try:
                 )
                 show_map(geojson_data, centroid)
 
+            #######################################################################
+            st.divider()
             # KPI row
             st.subheader("Derniers indicateurs clés disponibles")
             show_kpis(data_df, seuil=seuil, year_range=year_range)
@@ -373,6 +377,8 @@ try:
             create_barplot(data_df, title, seuil=seuil, year_range=year_range)
 
             if st.checkbox("Afficher les données IDC"):
+                #######################################################################
+                st.divider()
                 show_dataframe(data_df, seuil=seuil, year_range=year_range)
         else:
             st.error(
