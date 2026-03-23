@@ -119,14 +119,12 @@ def show_map(data: List[Dict], centroid: Tuple[float, float]) -> None:
                 "<b>EGID :</b> {egid}<br/>"
                 "<b>Adresse :</b> {adresse}<br/>"
                 "<b>SRE :</b> {sre} m²<br/>"
-                "<b>IDC :</b> {indice_calcule} MJ/m²<br/>"
-                "<b>Agent :</b> {agent_energetique_ef_1}"
+                "<b>IDC :</b> {indice} MJ/m² ({annee})<br/>"
+                "<b>Agent 1 :</b> {agent_energetique_1} — {quantite_agent_energetique_1} {unite_agent_energetique_1}<br/>"
+                "<b>Agent 2 :</b> {agent_energetique_2} — {quantite_agent_energetique_2} {unite_agent_energetique_2}<br/>"
+                "<b>Agent 3 :</b> {agent_energetique_3} — {quantite_agent_energetique_3} {unite_agent_energetique_3}"
             ),
-            "style": {
-                "backgroundColor": "#1e1e2e",
-                "color": "white",
-                "fontSize": "13px",
-            },
+            "style": {"backgroundColor": "#1e1e2e", "color": "white", "fontSize": "13px"},
         },
     )
     st.pydeck_chart(deck, use_container_width=True)
