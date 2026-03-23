@@ -618,10 +618,8 @@ def show_kpis(
     sre_last = df_latest["sre"].sum()
     if sre_first and sre_first > 0 and sre_last and sre_last > 0:
         sre_delta = sre_last - sre_first
-        sre_delta_pct = sre_delta / sre_first * 100
     else:
         sre_delta = None
-        sre_delta_pct = None
 
     # Variation absolue IDC vs seuil
     delta_abs = idc_current - seuil
@@ -649,12 +647,19 @@ def show_kpis(
             help="Moyenne pondérée SRE sur 3 ans glissants.",
         )
     with col3:
+        if idc_first is not None and idc_current is not None:
+            # Préfixe "-" ou "+" pour que Streamlit oriente la flèche correctement
+            sign = "-" if idc_current < idc_first else "+"
+            delta_str = f"{sign}{idc_first:.0f} → {idc_current:.0f} MJ/m²"
+        else:
+            delta_str = None
+
         st.metric(
             label=f"Évolution IDC ({first_year}→{latest_year})",
             value=f"{ratio:+.1f} %" if ratio is not None else "N/A",
+            delta=delta_str,
+            delta_color="inverse",
             help="Variation relative de l'IDC pondéré entre première et dernière année de la période.",
-            delta=f"{idc_first:+.0f} → {idc_current:+.0f} MJ/m²" if idc_first is not None and idc_current is not None else "N/A",
-            delta_color="off",
         )
     with col4:
         st.metric(
