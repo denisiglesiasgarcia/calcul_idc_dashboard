@@ -648,82 +648,39 @@ def show_kpis(
     delta_abs = idc_current - seuil
 
     # ── Ligne 1 : IDC / moy3 / seuil ──────────────────────────────────────────
-    st.markdown("#### Performance énergétique")
-    if seuil > 0:
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric(
-                label=f"IDC pondéré ({latest_year})",
-                value=f"{idc_current:.0f} MJ/m²",
-                delta=f"{delta_abs:+.0f} MJ/m² vs seuil",
-                delta_color="inverse",
-            )
-        with col2:
-            st.metric(
-                label=f"Moy. 3 ans ({idc_moy3_label or 'N/A'})",
-                value=f"{idc_moy3:.0f} MJ/m²" if idc_moy3 is not None else "N/A",
-                help="Moyenne pondérée SRE sur 3 ans glissants.",
-            )
-        with col3:
-            st.metric(
-                label="Seuil de référence",
-                value=f"{seuil} MJ/m²",
-                help="Seuil indicatif configurable dans la barre latérale.",
-            )
-    else:
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric(
-                label=f"IDC pondéré ({latest_year})",
-                value=f"{idc_current:.0f} MJ/m²",
-            )
-        with col2:
-            st.metric(
-                label=f"Moy. 3 ans ({idc_moy3_label or 'N/A'})",
-                value=f"{idc_moy3:.0f} MJ/m²" if idc_moy3 is not None else "N/A",
-                help="Moyenne pondérée SRE sur 3 ans glissants.",
-            )
-
-    st.divider()
-
-    # ── Ligne 2 : Évolution temporelle ────────────────────────────────────────
-    st.markdown("#### Évolution sur la période")
-    col4, col5, col6 = st.columns(3)
-    with col4:
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    with col1:
         st.metric(
-            label=f"Tendance ({first_year}–{latest_year})",
-            value=f"{slope:+.1f} MJ/m²/an" if slope is not None else "N/A",
-            delta="amélioration"
-            if slope is not None and slope < 0
-            else ("dégradation" if slope is not None and slope > 0 else None),
-            delta_color="normal" if slope is not None and slope < 0 else "inverse",
-            help="Pente de régression linéaire sur l'IDC pondéré SRE agrégé.",
+            label=f"IDC pondéré ({latest_year})",
+            value=f"{idc_current:.0f} MJ/m²",
+            delta=f"{delta_abs:+.0f} MJ/m² vs seuil",
+            delta_color="inverse",
         )
-    with col5:
+    with col2:
+        st.metric(
+            label=f"Moy. 3 ans ({idc_moy3_label or 'N/A'})",
+            value=f"{idc_moy3:.0f} MJ/m²" if idc_moy3 is not None else "N/A",
+            help="Moyenne pondérée SRE sur 3 ans glissants.",
+        )
+    with col3:
         st.metric(
             label=f"Évolution ({first_year}→{latest_year})",
             value=f"{ratio:+.1f} %" if ratio is not None else "N/A",
             help="Variation relative de l'IDC pondéré entre première et dernière année de la période.",
         )
-    with col6:
+    with col4:
         st.metric(
             label="Années sans données",
             value=str(n_missing) if n_missing > 0 else "Aucune",
             help=f"Années manquantes dans la plage sélectionnée : {missing_label}",
         )
-
-    st.divider()
-
-    # ── Ligne 3 : Bâtiments ───────────────────────────────────────────────────
-    st.markdown("#### Caractéristiques du parc")
-    col7, col8, col9 = st.columns(3)
-    with col7:
+    with col5:
         st.metric(
             label=f"Changement agent ({first_year}→{latest_year})",
             value=agent_value,
             help="Bâtiments dont l'agent énergétique principal a changé sur la période.",
         )
-    with col8:
+    with col6:
         st.metric(
             label=f"Variation SRE ({first_year}→{latest_year})",
             value=f"{sre_delta:+.0f} m²" if sre_delta is not None else "N/A",
@@ -731,9 +688,5 @@ def show_kpis(
             delta_color="off",
             help="Variation de la SRE totale entre première et dernière année.",
         )
-    with col9:
-        st.metric(
-            label=f"Écart inter-bâtiments ({latest_year})",
-            value=f"{cv:.1f} %" if cv is not None else "N/A",
-            help="Coefficient de variation (σ/μ) de l'IDC entre bâtiments. Élevé = forte hétérogénéité.",
-        )
+    st.divider()
+
