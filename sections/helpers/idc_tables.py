@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Tuple
 
 import polars as pl
 import streamlit as st
+import pandas as pd
 
 from sections.helpers.save_excel_streamlit import convert_df_to_excel
 
@@ -197,7 +198,9 @@ def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
     if n_egids < 2:
         return
 
-    st.subheader("IDC pondéré par année (agrégation de tous les bâtiments sélectionnés)")
+    st.subheader(
+        "IDC pondéré par année (agrégation de tous les bâtiments sélectionnés)"
+    )
     st.caption(f"Agrégation de {n_egids} bâtiments — pondération par surface SRE")
 
     df_grouped = (
@@ -301,8 +304,22 @@ def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
         ),
     }
 
+    df_pd = df_grouped.to_pandas()
+
+    def _style_delta(val):
+        """Couleur texte sur delta_annuel : vert si baisse (amélioration), rouge si hausse."""
+        if pd.isna(val) or val == 0:
+            return ""
+        return (
+            "color: #28a745; font-weight: bold"
+            if val < 0
+            else "color: #dc3545; font-weight: bold"
+        )
+
+    styled = df_pd.style.map(_style_delta, subset=["delta_annuel"])
+
     st.dataframe(
-        df_grouped.to_pandas(),
+        styled,
         column_config=col_cfg,
         use_container_width=True,
         hide_index=True,
@@ -332,7 +349,11 @@ def show_energy_agents_table(
         df = df.filter(pl.col("annee").is_between(year_range[0], year_range[1]))
 
     # Colonnes agents présentes dans le dataset (1 est obligatoire, 2 et 3 optionnelles)
-    agent_cols = [c for c in ["agent_energetique_1", "agent_energetique_2", "agent_energetique_3"] if c in df.columns]
+    agent_cols = [
+        c
+        for c in ["agent_energetique_1", "agent_energetique_2", "agent_energetique_3"]
+        if c in df.columns
+    ]
 
     # Cast tous les agents en Utf8 et remplace les nulls par "" pour la concaténation
     df = df.with_columns([pl.col(c).cast(pl.Utf8).fill_null("") for c in agent_cols])
@@ -356,9 +377,9 @@ def show_energy_agents_table(
     )
 
     # Pivot : lignes = bâtiment, colonnes = année
-    df_pivot = df.pivot(
-        index="adresse_egid", on="annee", values="agents"
-    ).sort("adresse_egid")
+    df_pivot = df.pivot(index="adresse_egid", on="annee", values="agents").sort(
+        "adresse_egid"
+    )
 
     # Colonnes année triées chronologiquement
     year_cols = sorted(
@@ -371,7 +392,25 @@ def show_energy_agents_table(
         f"Agents énergétiques ({', '.join(agent_cols)}) concaténés par année. "
         "Une cellule vide indique absence de données."
     )
-    st.dataframe(df_pivot, use_container_width=True, hide_index=True)
+    df_pd = df_pivot.to_pandas()
+
+    def _highlight_agent_changes(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Surligne les cellules où l'agent diffère de l'année précédente.
+        Ignore les transitions depuis/vers NaN (absence de données).
+        """
+        styles = pd.DataFrame("", index=df.index, columns=df.columns)
+        for i in range(1, len(year_cols)):
+            prev, curr = year_cols[i - 1], year_cols[i]
+            if prev not in df.columns or curr not in df.columns:
+                continue
+            changed = df[curr].notna() & df[prev].notna() & (df[curr] != df[prev])
+            styles.loc[changed, curr] = "background-color: #fff3cd; font-weight: bold"
+        return styles
+
+    styled = df_pd.style.apply(_highlight_agent_changes, axis=None)
+    st.dataframe(styled, use_container_width=True, hide_index=True)
+
 
 def show_sre_table(
     data: List[Dict],
@@ -391,9 +430,9 @@ def show_sre_table(
     ).select(["adresse_egid", "annee", "sre"])
 
     # Pivot : lignes = bâtiment, colonnes = année
-    df_pivot = df.pivot(
-        index="adresse_egid", on="annee", values="sre"
-    ).sort("adresse_egid")
+    df_pivot = df.pivot(index="adresse_egid", on="annee", values="sre").sort(
+        "adresse_egid"
+    )
 
     # Colonnes année triées chronologiquement
     year_cols = sorted(
@@ -406,7 +445,27 @@ def show_sre_table(
         "Surface de référence (SRE) par année. "
         "Une cellule vide indique absence de données pour cette année."
     )
-    st.dataframe(df_pivot, use_container_width=True, hide_index=True)
+
+    df_pd = df_pivot.to_pandas()
+
+    def _highlight_sre_changes(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Surligne les cellules où la SRE diffère de l'année précédente.
+        Tolérance de 1 m² pour ignorer les variations dues aux arrondis.
+        """
+        styles = pd.DataFrame("", index=df.index, columns=df.columns)
+        for i in range(1, len(year_cols)):
+            prev, curr = year_cols[i - 1], year_cols[i]
+            if prev not in df.columns or curr not in df.columns:
+                continue
+            changed = (
+                df[curr].notna() & df[prev].notna() & ((df[curr] - df[prev]).abs() > 1)
+            )
+            styles.loc[changed, curr] = "background-color: #fff3cd; font-weight: bold"
+        return styles
+
+    styled = df_pd.style.apply(_highlight_sre_changes, axis=None)
+    st.dataframe(styled, use_container_width=True, hide_index=True)
 
 
 def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
