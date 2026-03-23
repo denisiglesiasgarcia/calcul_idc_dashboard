@@ -469,6 +469,14 @@ def show_sre_table(
 
 
 def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
+    """
+    KPI row above the chart. Métriques calculées :
+      Ligne 1 — IDC pondéré (dernière année), moy3 pondérée SRE, seuil (si > 0)
+      Ligne 2 — Tendance (pente régression), ratio période, années manquantes
+      Ligne 3 — Changement agent énergétique, variation SRE, écart inter-bâtiments (CV)
+    """
+    import numpy as np
+
     df = pl.from_dicts(data_df).with_columns(
         [
             pl.col("sre").cast(pl.Float64),
@@ -477,27 +485,27 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
     )
 
     latest_year = df["annee"].max()
+    first_year = df["annee"].min()
     df_latest = df.filter(pl.col("annee") == latest_year)
     total_sre = df_latest["sre"].sum()
 
-    # IDC pondéré SRE pour la dernière année
+    # --- IDC pondéré SRE dernière année ---
     if total_sre and total_sre > 0:
         idc_current = (df_latest["indice"] * df_latest["sre"]).sum() / total_sre
     else:
         idc_current = df_latest["indice"].mean()
 
-    # Moy3 pondérée SRE calculée — même logique que _show_groupby_annee
-    df_moy3 = (
+    # --- Agrégation annuelle pondérée SRE (base pour moy3 et tendance) ---
+    df_agg = (
         df.group_by("annee")
         .agg(
             [
                 (pl.col("indice") * pl.col("sre")).sum().alias("_indice_x_sre"),
                 pl.col("sre").sum().alias("_sre_total"),
-                pl.col("indice").mean().alias("_indice_mean"),  # fallback si SRE absent
+                pl.col("indice").mean().alias("_indice_mean"),
             ]
         )
         .with_columns(
-            # Pondération SRE si disponible, sinon moyenne simple
             pl.when(pl.col("_sre_total") > 0)
             .then(pl.col("_indice_x_sre") / pl.col("_sre_total"))
             .otherwise(pl.col("_indice_mean"))
@@ -513,7 +521,6 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
             .round(0)
             .alias("indice_pondere_moy3")
         )
-        # Reconstruit le label des 3 années incluses
         .with_columns(
             [
                 pl.col("annee").shift(2).alias("_y2"),
@@ -533,20 +540,110 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
             .alias("annees_moy3_label")
         )
         .drop(["_y2", "_y1"])
-        .filter(pl.col("indice_pondere_moy3").is_not_null())
     )
 
-    # Dernière valeur disponible (peut être antérieure à latest_year si données manquantes)
-    if len(df_moy3) > 0:
-        last_moy3_row = df_moy3.sort("annee").tail(1)
-        idc_moy3 = last_moy3_row["indice_pondere_moy3"][0]
-        idc_moy3_label = last_moy3_row["annees_moy3_label"][0]  # ex: "2022, 2023, 2024"
+    # --- Moy3 : dernière valeur disponible ---
+    df_moy3_valid = df_agg.filter(pl.col("indice_pondere_moy3").is_not_null())
+    if len(df_moy3_valid) > 0:
+        last_row = df_moy3_valid.tail(1)
+        idc_moy3 = last_row["indice_pondere_moy3"][0]
+        idc_moy3_label = last_row["annees_moy3_label"][0]
     else:
         idc_moy3 = None
         idc_moy3_label = None
 
+    # --- Tendance : pente régression linéaire sur IDC pondéré agrégé (MJ/m²/an) ---
+    df_agg_valid = df_agg.filter(pl.col("indice_pondere").is_not_null())
+    if len(df_agg_valid) >= 2:
+        years_arr = df_agg_valid["annee"].to_numpy().astype(float)
+        idc_arr = df_agg_valid["indice_pondere"].to_numpy().astype(float)
+        slope = float(np.polyfit(years_arr, idc_arr, 1)[0])
+    else:
+        slope = None
+
+    # --- Ratio dernière / première année ---
+    df_first = df.filter(pl.col("annee") == first_year)
+    sre_first = df_first["sre"].sum()
+    if sre_first and sre_first > 0:
+        idc_first = (df_first["indice"] * df_first["sre"]).sum() / sre_first
+    else:
+        idc_first = df_first["indice"].mean()
+    ratio = (
+        ((idc_current - idc_first) / idc_first * 100)
+        if idc_first and idc_first > 0
+        else None
+    )
+
+    # --- Années manquantes : années sans aucune donnée dans la plage couverte ---
+    all_years = set(range(first_year, latest_year + 1))
+    years_with_data = set(df["annee"].unique().to_list())
+    missing_years = sorted(all_years - years_with_data)
+    n_missing = len(missing_years)
+    missing_label = (
+        ", ".join(str(y) for y in missing_years) if missing_years else "Aucune"
+    )
+
+    # --- Changement d'agent énergétique par EGID ---
+    df_agents = (
+        df.filter(pl.col("annee").is_in([first_year, latest_year]))
+        .group_by(["egid", "annee"])
+        .agg(pl.col("agent_energetique_1").first())
+        .sort(["egid", "annee"])
+    )
+    # Pivot pour comparer premier vs dernier agent par EGID
+    df_agent_pivot = df_agents.pivot(
+        index="egid", on="annee", values="agent_energetique_1"
+    )
+    first_col = str(first_year)
+    last_col = str(latest_year)
+    if first_col in df_agent_pivot.columns and last_col in df_agent_pivot.columns:
+        changed = df_agent_pivot.filter(
+            pl.col(first_col).is_not_null()
+            & pl.col(last_col).is_not_null()
+            & (pl.col(first_col) != pl.col(last_col))
+        )
+        n_changed = len(changed)
+        n_egids = df["egid"].n_unique()
+        agent_label = f"{n_changed}/{n_egids} bâtiment(s)" if n_changed > 0 else "Aucun"
+        agent_delta = f"{n_changed} changement(s)" if n_changed > 0 else None
+    else:
+        agent_label = "N/A"
+        agent_delta = None
+        n_changed = 0
+
+    # --- Variation SRE (première → dernière année, pondérée) ---
+    sre_last = df_latest["sre"].sum()
+    if sre_first and sre_first > 0 and sre_last and sre_last > 0:
+        sre_delta = sre_last - sre_first
+        sre_delta_pct = sre_delta / sre_first * 100
+    else:
+        sre_delta = None
+        sre_delta_pct = None
+
+    # --- Coefficient de variation inter-bâtiments (dernière année) ---
+    if df["egid"].n_unique() >= 2:
+        idc_by_egid = (
+            df_latest.group_by("egid")
+            .agg(
+                pl.when(pl.col("sre").sum() > 0)
+                .then((pl.col("indice") * pl.col("sre")).sum() / pl.col("sre").sum())
+                .otherwise(pl.col("indice").mean())
+                .alias("idc_egid")
+            )
+            .filter(pl.col("idc_egid").is_not_null())
+        )
+        if len(idc_by_egid) >= 2:
+            mean_idc = idc_by_egid["idc_egid"].mean()
+            std_idc = idc_by_egid["idc_egid"].std()
+            cv = (std_idc / mean_idc * 100) if mean_idc and mean_idc > 0 else None
+        else:
+            cv = None
+    else:
+        cv = None  # Non pertinent pour un seul bâtiment
+
     delta_abs = idc_current - seuil
 
+    # ── Ligne 1 : IDC courant / moy3 / seuil ──────────────────────────────────
     if seuil > 0:
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -581,3 +678,54 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
                 value=f"{idc_moy3:.0f} MJ/m²" if idc_moy3 is not None else "N/A",
                 help="Moyenne pondérée SRE sur 3 ans, calculée depuis les données brutes.",
             )
+
+    # ── Ligne 2 : Tendance / ratio période / années manquantes ────────────────
+    col4, col5, col6 = st.columns(3)
+    with col4:
+        st.metric(
+            label=f"Tendance IDC ({first_year}–{latest_year})",
+            value=f"{slope:+.1f} MJ/m²/an" if slope is not None else "N/A",
+            delta="amélioration"
+            if slope is not None and slope < 0
+            else ("dégradation" if slope is not None and slope > 0 else None),
+            delta_color="normal" if slope is not None and slope < 0 else "inverse",
+            help="Pente de régression linéaire sur l'IDC pondéré SRE agrégé.",
+        )
+    with col5:
+        st.metric(
+            label=f"Évolution période ({first_year}→{latest_year})",
+            value=f"{ratio:+.1f} %" if ratio is not None else "N/A",
+            delta_color="inverse",
+            help="Variation relative de l'IDC pondéré entre première et dernière année.",
+        )
+    with col6:
+        st.metric(
+            label="Années sans données",
+            value=str(n_missing),
+            help=f"Années manquantes : {missing_label}",
+        )
+
+    # ── Ligne 3 : Agent / SRE / CV ────────────────────────────────────────────
+    col7, col8, col9 = st.columns(3)
+    with col7:
+        st.metric(
+            label=f"Changement agent énergétique ({first_year}→{latest_year})",
+            value=agent_label,
+            delta=agent_delta,
+            delta_color="off",
+            help="Bâtiments dont l'agent énergétique principal a changé sur la période.",
+        )
+    with col8:
+        st.metric(
+            label=f"Variation SRE ({first_year}→{latest_year})",
+            value=f"{sre_delta:+.0f} m²" if sre_delta is not None else "N/A",
+            delta=f"{sre_delta_pct:+.1f} %" if sre_delta_pct is not None else None,
+            delta_color="off",
+            help="Variation de la surface de référence énergétique totale entre première et dernière année.",
+        )
+    with col9:
+        st.metric(
+            label=f"Écart inter-bâtiments ({latest_year})",
+            value=f"{cv:.1f} %" if cv is not None else "N/A",
+            help="Coefficient de variation (σ/μ) de l'IDC entre bâtiments. Élevé = hétérogénéité importante.",
+        )
