@@ -647,18 +647,13 @@ def show_kpis(
             help="Moyenne pondérée SRE sur 3 ans glissants.",
         )
     with col3:
-        if idc_first is not None and idc_current is not None:
-            # Préfixe "-" ou "+" pour que Streamlit oriente la flèche correctement
-            sign = "-" if idc_current < idc_first else "+"
-            delta_str = f"{sign}{idc_first:.0f} → {idc_current:.0f} MJ/m²"
-        else:
-            delta_str = None
-
+        arrow_col3 = "down" if idc_current < idc_first else "up"
         st.metric(
             label=f"Évolution IDC ({first_year}→{latest_year})",
             value=f"{ratio:+.1f} %" if ratio is not None else "N/A",
-            delta=delta_str,
+            delta=f"{idc_first:.0f} → {idc_current:.0f} MJ/m²" if idc_first is not None else None,
             delta_color="inverse",
+            delta_arrow=arrow_col3,
             help="Variation relative de l'IDC pondéré entre première et dernière année de la période.",
         )
     with col4:
@@ -674,11 +669,13 @@ def show_kpis(
             help="Bâtiments dont l'agent énergétique principal a changé sur la période.",
         )
     with col6:
+        arrow_col6 = "down" if sre_delta is not None and sre_delta < 0 else "up"
         st.metric(
             label=f"Variation SRE ({first_year}→{latest_year})",
             value=f"{sre_delta:+.0f} m²" if sre_delta is not None else "N/A",
             delta=f"{sre_first:+.0f} → {sre_last:+.0f} m²" if sre_first is not None and sre_last is not None else "N/A",
             delta_color="off",
+            delta_arrow=arrow_col6,
             help="Variation de la SRE totale entre première et dernière année.",
         )
     st.divider()
