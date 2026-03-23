@@ -333,12 +333,7 @@ if selected_options:
 # ---------------------------------------------------------------------------------------
 try:
     if selected_options and len(st.session_state.get("data_verif_idc", [])) > 0:
-        #######################################################################
-        st.divider()
-        st.subheader("Plan de situation")
-
         egids = st.session_state["data_verif_idc"]["egid"].to_list()
-
         # ------------------------------------------------------------------
         # API cache in session_state — avoids re-fetching when the user only
         # toggles a checkbox or adjusts a sidebar parameter.
@@ -358,31 +353,42 @@ try:
             data_df = st.session_state["_api_df"]
 
         if data_geometry and data_df:
-            if st.checkbox("Afficher la carte"):
-                geojson_data, centroid = convert_geometry_for_streamlit(
+            geojson_data, centroid = convert_geometry_for_streamlit(
                     data_geometry
                 )
-                show_map(geojson_data, centroid)
+        
+        #######################################################################
+        st.divider()
+        
+        # Chiffres-clé
+        st.subheader("Chiffres-clé")
+        show_kpis(data_df, seuil=seuil, year_range=year_range)
+        
+        #######################################################################
+        st.divider()
 
-            #######################################################################
-            st.divider()
-            # KPI row
-            st.subheader("Chiffres-clé")
-            show_kpis(data_df, seuil=seuil, year_range=year_range)
+        # Map
+        st.subheader("Plan de situation")
+        show_map(geojson_data, centroid)
 
-            # Historical bar chart
-            st.subheader("Historique IDC")
-            adresses_titre = st.session_state["data_verif_idc"]["adresse"].to_list()
-            title = ", ".join(adresses_titre)
-            create_barplot(data_df, title, seuil=seuil, year_range=year_range)
+        #######################################################################
+        st.divider()
 
-            #######################################################################
-            st.divider()
-            if st.checkbox("Afficher les données IDC"):
-                show_dataframe(data_df, seuil=seuil, year_range=year_range)
-        else:
-            st.error(
-                "Pas de données disponibles pour le(s) EGID associé(s) à ce site."
-            )
+        # Barplot
+        st.subheader("Historique IDC")
+        adresses_titre = st.session_state["data_verif_idc"]["adresse"].to_list()
+        title = ", ".join(adresses_titre)
+        create_barplot(data_df, title, seuil=seuil, year_range=year_range)
+
+        #######################################################################
+        st.divider()
+
+        # Données IDC détaillées
+        st.subheader("Données IDC")
+        show_dataframe(data_df, seuil=seuil, year_range=year_range)
+    else:
+        st.error(
+            "Pas de données disponibles pour le(s) EGID associé(s) à ce site."
+        )
 except Exception as e:
     st.error(f"Une erreur est survenue lors de l'analyse : {e}")
