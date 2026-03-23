@@ -493,14 +493,18 @@ def show_kpis(data_df: List[Dict], seuil: int = 450) -> None:
             [
                 (pl.col("indice") * pl.col("sre")).sum().alias("_indice_x_sre"),
                 pl.col("sre").sum().alias("_sre_total"),
+                pl.col("indice").mean().alias("_indice_mean"),  # fallback si SRE absent
             ]
         )
         .with_columns(
-            (pl.col("_indice_x_sre") / pl.col("_sre_total"))
+            # Pondération SRE si disponible, sinon moyenne simple
+            pl.when(pl.col("_sre_total") > 0)
+            .then(pl.col("_indice_x_sre") / pl.col("_sre_total"))
+            .otherwise(pl.col("_indice_mean"))
             .round(0)
             .alias("indice_pondere")
         )
-        .drop(["_indice_x_sre", "_sre_total"])
+        .drop(["_indice_x_sre", "_sre_total", "_indice_mean"])
         .sort("annee")
         .with_columns(
             pl.col("indice_pondere")
