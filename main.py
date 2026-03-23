@@ -270,9 +270,14 @@ with tab3:
             "_pending_multiselect"
         )
 
+    # Garantit que les valeurs sélectionnées sont toujours dans les options,
+    # même si le filtre texte actif les exclurait.
+    current_selection = st.session_state.get("address_multiselect", [])
+    visible_options = list(dict.fromkeys(current_selection + filtered_options))
+
     selected_options = st.multiselect(
         label="Adresse",
-        options=filtered_options,  # ← liste filtrée : la dropdown reste stable lors des clics successifs
+        options=visible_options,  # ← liste filtrée : la dropdown reste stable lors des clics successifs
         placeholder="Sélectionner une ou plusieurs adresses...",
         key="address_multiselect",
         label_visibility="collapsed",
