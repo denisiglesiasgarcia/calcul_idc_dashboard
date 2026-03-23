@@ -193,193 +193,190 @@ with st.sidebar:
 # ---------------------------------------------------------------------------------------
 # Main content
 # ---------------------------------------------------------------------------------------
-(tab3,) = st.tabs(["Analyse historique IDC"])
+st.subheader("Sélection adresse")
 
-with tab3:
-    st.subheader("Sélection adresse")
-
-    st.markdown(
-        """
-        <style>
-        span[data-baseweb="tag"] { max-width: none !important; width: fit-content !important; }
-        span[data-baseweb="tag"] > span:first-child {
-            overflow: visible !important; white-space: nowrap !important;
-            text-overflow: unset !important; max-width: none !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    df_addresses = get_all_addresses()
-
-    df_addresses = df_addresses.with_columns(
-        pl.col("egid").cast(pl.Utf8).fill_null("N/A").alias("egid_str")
-    ).with_columns(
-        (pl.col("adresse") + " (" + pl.col("egid_str") + ")").alias("display")
-    )
-
-    display_options = df_addresses["display"].to_list()
-    options_map: dict[str, dict] = {
-        row["display"]: {"adresse": row["adresse"], "egid": row["egid_str"]}
-        for row in df_addresses.to_dicts()
+st.markdown(
+    """
+    <style>
+    span[data-baseweb="tag"] { max-width: none !important; width: fit-content !important; }
+    span[data-baseweb="tag"] > span:first-child {
+        overflow: visible !important; white-space: nowrap !important;
+        text-overflow: unset !important; max-width: none !important;
     }
-    # Reverse map: egid -> display label
-    egid_to_display: dict[str, str] = {v["egid"]: k for k, v in options_map.items()}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
-    # External filter + bulk action buttons
-    col_search, col_all, col_clear = st.columns([6, 1, 1])
+df_addresses = get_all_addresses()
 
-    # Applique la réinitialisation du filtre demandée par Tout/Aucun
-    if "_pending_search_filter" in st.session_state:
-        st.session_state["address_search_filter"] = st.session_state.pop(
-            "_pending_search_filter"
-        )
+df_addresses = df_addresses.with_columns(
+    pl.col("egid").cast(pl.Utf8).fill_null("N/A").alias("egid_str")
+).with_columns(
+    (pl.col("adresse") + " (" + pl.col("egid_str") + ")").alias("display")
+)
 
-    with col_search:
-        search_filter = st.text_input(
-            "Filtrer",
-            placeholder="Taper pour filtrer les adresses...",
-            label_visibility="collapsed",
-            key="address_search_filter",
-        )
+display_options = df_addresses["display"].to_list()
+options_map: dict[str, dict] = {
+    row["display"]: {"adresse": row["adresse"], "egid": row["egid_str"]}
+    for row in df_addresses.to_dicts()
+}
+# Reverse map: egid -> display label
+egid_to_display: dict[str, str] = {v["egid"]: k for k, v in options_map.items()}
 
-    # Apply filter on the full list
-    filtered_options = (
-        [o for o in display_options if search_filter.lower() in o.lower()]
-        if search_filter
-        else display_options
+# External filter + bulk action buttons
+col_search, col_all, col_clear = st.columns([6, 1, 1])
+
+# Applique la réinitialisation du filtre demandée par Tout/Aucun
+if "_pending_search_filter" in st.session_state:
+    st.session_state["address_search_filter"] = st.session_state.pop(
+        "_pending_search_filter"
     )
 
-    with col_all:
-        if st.button(
-            "Tout",
-            use_container_width=True,
-            help="Ajouter les résultats filtrés à la sélection",
-        ):
-            current = set(st.session_state["address_multiselect"])
-            st.session_state["address_multiselect"] = list(
-                current | set(filtered_options)
-            )
-            st.session_state["_pending_search_filter"] = ""
-            st.rerun()
-
-    with col_clear:
-        if st.button("Aucun", use_container_width=True, help="Vider la sélection"):
-            st.session_state["address_multiselect"] = []
-            st.session_state["_pending_search_filter"] = ""
-            st.rerun()
-
-    # Transfer pending selection set by the address importer (runs before widget instantiation)
-    if "_pending_multiselect" in st.session_state:
-        st.session_state["address_multiselect"] = st.session_state.pop(
-            "_pending_multiselect"
-        )
-
-    # Garantit que les valeurs sélectionnées sont toujours dans les options,
-    # même si le filtre texte actif les exclurait.
-    current_selection = st.session_state.get("address_multiselect", [])
-    visible_options = list(dict.fromkeys(current_selection + filtered_options))
-
-    selected_options = st.multiselect(
-        label="Adresse",
-        options=visible_options,  # ← liste filtrée : la dropdown reste stable lors des clics successifs
-        placeholder="Sélectionner une ou plusieurs adresses...",
-        key="address_multiselect",
+with col_search:
+    search_filter = st.text_input(
+        "Filtrer",
+        placeholder="Taper pour filtrer les adresses...",
         label_visibility="collapsed",
+        key="address_search_filter",
     )
 
-    # Reverse map: adresse (lowercase) -> display label — pour la recherche insensible à la casse
-    adresse_to_display: dict[str, str] = {
-        v["adresse"].lower(): k for k, v in options_map.items()
-    }
+# Apply filter on the full list
+filtered_options = (
+    [o for o in display_options if search_filter.lower() in o.lower()]
+    if search_filter
+    else display_options
+)
 
-    # Import rapide depuis une liste d'EGIDs
-    with st.expander("Charger depuis une liste d'adresses"):
-        adresse_raw = st.text_area(
-            "Adresses (une par ligne)",
-            height=80,
-            placeholder="Ex :\nRue de Rive 10\nRue du Rhône 5",
-            key="adresse_import_textarea",
+with col_all:
+    if st.button(
+        "Tout",
+        use_container_width=True,
+        help="Ajouter les résultats filtrés à la sélection",
+    ):
+        current = set(st.session_state["address_multiselect"])
+        st.session_state["address_multiselect"] = list(
+            current | set(filtered_options)
         )
-        if st.button("Charger", key="btn_load_adresses", use_container_width=False):
-            tokens = adresse_raw.splitlines()
-            adresses_input = {t.strip() for t in tokens if t.strip()}
+        st.session_state["_pending_search_filter"] = ""
+        st.rerun()
 
-            matched = [
-                adresse_to_display[a.lower()]
-                for a in adresses_input
-                if a.lower() in adresse_to_display
-            ]
-            not_found = {
-                a for a in adresses_input if a.lower() not in adresse_to_display
-            }
+with col_clear:
+    if st.button("Aucun", use_container_width=True, help="Vider la sélection"):
+        st.session_state["address_multiselect"] = []
+        st.session_state["_pending_search_filter"] = ""
+        st.rerun()
 
-            if matched:
-                # Use staging key — direct write after widget instantiation raises StreamlitAPIException
-                st.session_state["_pending_multiselect"] = matched
-                if not_found:
-                    st.warning(
-                        f"{len(not_found)} adresse(s) non trouvée(s) dans la base locale : "
-                        f"{', '.join(sorted(not_found))}"
-                    )
-                st.rerun()
-            else:
-                st.warning("Aucune adresse correspondante trouvée dans la base locale.")
+# Transfer pending selection set by the address importer (runs before widget instantiation)
+if "_pending_multiselect" in st.session_state:
+    st.session_state["address_multiselect"] = st.session_state.pop(
+        "_pending_multiselect"
+    )
 
-    if selected_options:
-        st.write(f"{len(selected_options)} adresse(s) sélectionnée(s)")
-        selected_rows = [options_map[opt] for opt in selected_options]
-        st.session_state["data_verif_idc"] = pl.DataFrame(selected_rows)
-        save_history_entry(selected_options)
+# Garantit que les valeurs sélectionnées sont toujours dans les options,
+# même si le filtre texte actif les exclurait.
+current_selection = st.session_state.get("address_multiselect", [])
+visible_options = list(dict.fromkeys(current_selection + filtered_options))
 
-    # ---------------------------------------------------------------------------------------
-    try:
-        if selected_options and len(st.session_state.get("data_verif_idc", [])) > 0:
-            st.subheader("Plan de situation")
+selected_options = st.multiselect(
+    label="Adresse",
+    options=visible_options,  # ← liste filtrée : la dropdown reste stable lors des clics successifs
+    placeholder="Sélectionner une ou plusieurs adresses...",
+    key="address_multiselect",
+    label_visibility="collapsed",
+)
 
-            egids = st.session_state["data_verif_idc"]["egid"].to_list()
+# Reverse map: adresse (lowercase) -> display label — pour la recherche insensible à la casse
+adresse_to_display: dict[str, str] = {
+    v["adresse"].lower(): k for k, v in options_map.items()
+}
 
-            # ------------------------------------------------------------------
-            # API cache in session_state — avoids re-fetching when the user only
-            # toggles a checkbox or adjusts a sidebar parameter.
-            # The cache is invalidated whenever the selected EGID set changes.
-            # ------------------------------------------------------------------
-            cache_key = tuple(sorted(egids))
-            if st.session_state.get("_api_cache_key") != cache_key:
-                with st.spinner("Chargement des données SITG..."):
-                    data_geometry, data_df = fetch_idc_data(
-                        egids, URL_INDICE_MOYENNES_3_ANS
-                    )
-                st.session_state["_api_cache_key"] = cache_key
-                st.session_state["_api_geometry"] = data_geometry
-                st.session_state["_api_df"] = data_df
-            else:
-                data_geometry = st.session_state["_api_geometry"]
-                data_df = st.session_state["_api_df"]
+# Import rapide depuis une liste d'EGIDs
+with st.expander("Charger depuis une liste d'adresses"):
+    adresse_raw = st.text_area(
+        "Adresses (une par ligne)",
+        height=80,
+        placeholder="Ex :\nRue de Rive 10\nRue du Rhône 5",
+        key="adresse_import_textarea",
+    )
+    if st.button("Charger", key="btn_load_adresses", use_container_width=False):
+        tokens = adresse_raw.splitlines()
+        adresses_input = {t.strip() for t in tokens if t.strip()}
 
-            if data_geometry and data_df:
-                if st.checkbox("Afficher la carte"):
-                    geojson_data, centroid = convert_geometry_for_streamlit(
-                        data_geometry
-                    )
-                    show_map(geojson_data, centroid)
+        matched = [
+            adresse_to_display[a.lower()]
+            for a in adresses_input
+            if a.lower() in adresse_to_display
+        ]
+        not_found = {
+            a for a in adresses_input if a.lower() not in adresse_to_display
+        }
 
-                # KPI row
-                st.subheader("Derniers indicateurs clés disponibles")
-                show_kpis(data_df, seuil=seuil, year_range=year_range)
-
-                # Historical bar chart
-                st.subheader("Historique IDC")
-                adresses_titre = st.session_state["data_verif_idc"]["adresse"].to_list()
-                title = ", ".join(adresses_titre)
-                create_barplot(data_df, title, seuil=seuil, year_range=year_range)
-
-                if st.checkbox("Afficher les données IDC"):
-                    show_dataframe(data_df, seuil=seuil, year_range=year_range)
-            else:
-                st.error(
-                    "Pas de données disponibles pour le(s) EGID associé(s) à ce site."
+        if matched:
+            # Use staging key — direct write after widget instantiation raises StreamlitAPIException
+            st.session_state["_pending_multiselect"] = matched
+            if not_found:
+                st.warning(
+                    f"{len(not_found)} adresse(s) non trouvée(s) dans la base locale : "
+                    f"{', '.join(sorted(not_found))}"
                 )
-    except Exception as e:
-        st.error(f"Une erreur est survenue lors de l'analyse : {e}")
+            st.rerun()
+        else:
+            st.warning("Aucune adresse correspondante trouvée dans la base locale.")
+
+if selected_options:
+    st.write(f"{len(selected_options)} adresse(s) sélectionnée(s)")
+    selected_rows = [options_map[opt] for opt in selected_options]
+    st.session_state["data_verif_idc"] = pl.DataFrame(selected_rows)
+    save_history_entry(selected_options)
+
+# ---------------------------------------------------------------------------------------
+try:
+    if selected_options and len(st.session_state.get("data_verif_idc", [])) > 0:
+        st.subheader("Plan de situation")
+
+        egids = st.session_state["data_verif_idc"]["egid"].to_list()
+
+        # ------------------------------------------------------------------
+        # API cache in session_state — avoids re-fetching when the user only
+        # toggles a checkbox or adjusts a sidebar parameter.
+        # The cache is invalidated whenever the selected EGID set changes.
+        # ------------------------------------------------------------------
+        cache_key = tuple(sorted(egids))
+        if st.session_state.get("_api_cache_key") != cache_key:
+            with st.spinner("Chargement des données SITG..."):
+                data_geometry, data_df = fetch_idc_data(
+                    egids, URL_INDICE_MOYENNES_3_ANS
+                )
+            st.session_state["_api_cache_key"] = cache_key
+            st.session_state["_api_geometry"] = data_geometry
+            st.session_state["_api_df"] = data_df
+        else:
+            data_geometry = st.session_state["_api_geometry"]
+            data_df = st.session_state["_api_df"]
+
+        if data_geometry and data_df:
+            if st.checkbox("Afficher la carte"):
+                geojson_data, centroid = convert_geometry_for_streamlit(
+                    data_geometry
+                )
+                show_map(geojson_data, centroid)
+
+            # KPI row
+            st.subheader("Derniers indicateurs clés disponibles")
+            show_kpis(data_df, seuil=seuil, year_range=year_range)
+
+            # Historical bar chart
+            st.subheader("Historique IDC")
+            adresses_titre = st.session_state["data_verif_idc"]["adresse"].to_list()
+            title = ", ".join(adresses_titre)
+            create_barplot(data_df, title, seuil=seuil, year_range=year_range)
+
+            if st.checkbox("Afficher les données IDC"):
+                show_dataframe(data_df, seuil=seuil, year_range=year_range)
+        else:
+            st.error(
+                "Pas de données disponibles pour le(s) EGID associé(s) à ce site."
+            )
+except Exception as e:
+    st.error(f"Une erreur est survenue lors de l'analyse : {e}")
