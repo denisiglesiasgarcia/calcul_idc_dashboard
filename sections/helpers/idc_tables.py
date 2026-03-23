@@ -649,13 +649,20 @@ def show_kpis(
 
     # ── Ligne 1 : IDC / moy3 / seuil ──────────────────────────────────────────
     col1, col2, col3, col4, col5, col6 = st.columns(6)
-    with col1:
-        st.metric(
-            label=f"IDC pondéré ({latest_year})",
-            value=f"{idc_current:.0f} MJ/m²",
-            delta=f"{delta_abs:+.0f} MJ/m² vs seuil",
-            delta_color="inverse",
-        )
+    if seuil > 0:
+        with col1:
+            st.metric(
+                label=f"Dernier IDC pondéré ({latest_year})",
+                value=f"{idc_current:.0f} MJ/m²",
+                delta=f"{delta_abs:+.0f} MJ/m² vs seuil",
+                delta_color="inverse",
+            )
+    elif seuil == 0:
+        with col1:
+            st.metric(
+                label=f"Dernier IDC pondéré ({latest_year})",
+                value=f"{idc_current:.0f} MJ/m²",
+            )
     with col2:
         st.metric(
             label=f"Moy. 3 ans ({idc_moy3_label or 'N/A'})",

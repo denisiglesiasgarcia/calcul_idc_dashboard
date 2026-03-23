@@ -367,7 +367,7 @@ with tab3:
 
                 # KPI row
                 st.subheader("Derniers indicateurs clés disponibles")
-                show_kpis(data_df, seuil=seuil)
+                show_kpis(data_df, seuil=seuil, year_range=year_range)
 
                 # Historical bar chart
                 st.subheader("Historique IDC")
