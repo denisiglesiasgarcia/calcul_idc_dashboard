@@ -659,7 +659,6 @@ def show_kpis(
             label=f"Évolution IDC ({first_year}→{latest_year})",
             value=f"{ratio:+.1f} %" if ratio is not None else "N/A",
             delta=f"{idc_first:.0f} → {idc_current:.0f} MJ/m²" if idc_first is not None else None,
-            delta_color="inverse",
             delta_arrow=arrow_col3,
             help="Variation relative de l'IDC pondéré entre première et dernière année de la période.",
         )
