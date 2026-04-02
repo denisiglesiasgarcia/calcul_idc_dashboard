@@ -167,7 +167,7 @@ def show_dataframe(
     st.dataframe(
         styled,
         column_config=col_cfg,
-        width='stretch',
+        width="stretch",
         hide_index=True,
     )
 
@@ -320,7 +320,7 @@ def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
     st.dataframe(
         styled,
         column_config=col_cfg,
-        width='stretch',
+        width="stretch",
         hide_index=True,
     )
 
@@ -408,7 +408,7 @@ def show_energy_agents_table(
         return styles
 
     styled = df_pd.style.apply(_highlight_agent_changes, axis=None)
-    st.dataframe(styled, width='stretch', hide_index=True)
+    st.dataframe(styled, width="stretch", hide_index=True)
 
 
 def show_sre_table(
@@ -425,8 +425,10 @@ def show_sre_table(
         df = df.filter(pl.col("annee").is_between(year_range[0], year_range[1]))
 
     df = df.with_columns(
-        (pl.col("adresse") + " - " + pl.col("egid").cast(pl.Utf8)).alias("adresse_egid"),
-        pl.col("sre").cast(pl.Int64), # int pour tous
+        (pl.col("adresse") + " - " + pl.col("egid").cast(pl.Utf8)).alias(
+            "adresse_egid"
+        ),
+        pl.col("sre").cast(pl.Int64),  # int pour tous
     ).select(["adresse_egid", "annee", "sre"])
 
     # Pivot : lignes = bâtiment, colonnes = année
@@ -465,12 +467,12 @@ def show_sre_table(
         return styles
 
     styled = (
-        df_pd.style
-        .apply(_highlight_sre_changes, axis=None)
+        df_pd.style.apply(_highlight_sre_changes, axis=None)
         # Affiche les entiers sans décimales, cellule vide si null
         .format(lambda x: f"{int(x)}" if pd.notna(x) else "", subset=year_cols)
     )
-    st.dataframe(styled, width='stretch', hide_index=True)
+    st.dataframe(styled, width="stretch", hide_index=True)
+
 
 def show_kpis(
     data_df: List[Dict], seuil: int = 450, year_range: Optional[Tuple[int, int]] = None
@@ -611,9 +613,7 @@ def show_kpis(
         )
         n_changed = len(changed)
         n_egids_total = df["egid"].n_unique()
-        agent_value = (
-            f"{n_changed}/{n_egids_total}" if n_changed > 0 else "Aucun"
-        )
+        agent_value = f"{n_changed}/{n_egids_total}" if n_changed > 0 else "Aucun"
     else:
         agent_value = "N/A"
         n_changed = 0
@@ -647,7 +647,6 @@ def show_kpis(
                 delta_color="off",
                 delta_arrow="off",
                 help="IDC pondéré par SRE pour la dernière année disponible.",
-
             )
     with col2:
         st.metric(
@@ -663,7 +662,9 @@ def show_kpis(
         st.metric(
             label=f"Évolution IDC ({first_year}→{latest_year})",
             value=f"{ratio:+.1f} %" if ratio is not None else "N/A",
-            delta=f"{idc_first:.0f} → {idc_current:.0f} MJ/m²" if idc_first is not None else None,
+            delta=f"{idc_first:.0f} → {idc_current:.0f} MJ/m²"
+            if idc_first is not None
+            else None,
             delta_arrow=arrow_col3,
             help="Variation relative de l'IDC pondéré entre première et dernière année de la période.",
         )
@@ -683,11 +684,23 @@ def show_kpis(
             help="Bâtiments dont l'agent énergétique principal a changé sur la période.",
         )
     with col6:
-        arrow_col6 = "down" if sre_delta is not None and sre_delta < 0 else "off" if sre_delta == 0 else "up"
+        arrow_col6 = (
+            "down"
+            if sre_delta is not None and sre_delta < 0
+            else "off"
+            if sre_delta == 0
+            else "up"
+        )
         st.metric(
             label=f"Variation SRE ({first_year}→{latest_year})",
-            value=f"{sre_delta:+.0f} m²" if sre_delta != 0 and sre_delta is not None else "Aucune" if sre_delta == 0 else "",
-            delta=f"{sre_first:+.0f} → {sre_last:+.0f} m²" if sre_delta != 0 and sre_first is not None and sre_last is not None else "",
+            value=f"{sre_delta:+.0f} m²"
+            if sre_delta != 0 and sre_delta is not None
+            else "Aucune"
+            if sre_delta == 0
+            else "",
+            delta=f"{sre_first:+.0f} → {sre_last:+.0f} m²"
+            if sre_delta != 0 and sre_first is not None and sre_last is not None
+            else "",
             delta_arrow=arrow_col6,
             help="Variation de la SRE totale entre première et dernière année.",
         )
