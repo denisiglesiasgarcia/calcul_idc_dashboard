@@ -425,7 +425,8 @@ def show_sre_table(
         df = df.filter(pl.col("annee").is_between(year_range[0], year_range[1]))
 
     df = df.with_columns(
-        (pl.col("adresse") + " - " + pl.col("egid").cast(pl.Utf8)).alias("adresse_egid")
+        (pl.col("adresse") + " - " + pl.col("egid").cast(pl.Utf8)).alias("adresse_egid"),
+        pl.col("sre").cast(pl.Int64), # int pour tous
     ).select(["adresse_egid", "annee", "sre"])
 
     # Pivot : lignes = bâtiment, colonnes = année
