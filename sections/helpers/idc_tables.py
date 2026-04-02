@@ -167,7 +167,7 @@ def show_dataframe(
     st.dataframe(
         styled,
         column_config=col_cfg,
-        use_container_width=True,
+        width='stretch',
         hide_index=True,
     )
 
@@ -320,7 +320,7 @@ def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
     st.dataframe(
         styled,
         column_config=col_cfg,
-        use_container_width=True,
+        width='stretch',
         hide_index=True,
     )
 
@@ -408,7 +408,7 @@ def show_energy_agents_table(
         return styles
 
     styled = df_pd.style.apply(_highlight_agent_changes, axis=None)
-    st.dataframe(styled, use_container_width=True, hide_index=True)
+    st.dataframe(styled, width='stretch', hide_index=True)
 
 
 def show_sre_table(
@@ -470,7 +470,7 @@ def show_sre_table(
         # Affiche les entiers sans décimales, cellule vide si null
         .format(lambda x: f"{int(x)}" if pd.notna(x) else "", subset=year_cols)
     )
-    st.dataframe(styled, use_container_width=True, hide_index=True)
+    st.dataframe(styled, width='stretch', hide_index=True)
 
 def show_kpis(
     data_df: List[Dict], seuil: int = 450, year_range: Optional[Tuple[int, int]] = None
