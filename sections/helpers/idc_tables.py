@@ -450,23 +450,27 @@ def show_sre_table(
 
     def _highlight_sre_changes(df: pd.DataFrame) -> pd.DataFrame:
         """
-        Surligne les cellules où la SRE diffère de l'année précédente.
-        Tolérance de 1 m² pour ignorer les variations dues aux arrondis.
+        Surligne les cellules où la SRE diffère de l'année précédente (tolérance 1 m²).
+        Cast en float pour éviter les problèmes avec les entiers nullable pandas (Int64/pd.NA).
         """
         styles = pd.DataFrame("", index=df.index, columns=df.columns)
         for i in range(1, len(year_cols)):
             prev, curr = year_cols[i - 1], year_cols[i]
             if prev not in df.columns or curr not in df.columns:
                 continue
-            changed = (
-                df[curr].notna() & df[prev].notna() & ((df[curr] - df[prev]).abs() > 1)
-            )
+            prev_f = df[prev].astype("float")
+            curr_f = df[curr].astype("float")
+            changed = curr_f.notna() & prev_f.notna() & ((curr_f - prev_f).abs() > 1)
             styles.loc[changed, curr] = "background-color: #fff3cd; font-weight: bold"
         return styles
 
-    styled = df_pd.style.apply(_highlight_sre_changes, axis=None)
+    styled = (
+        df_pd.style
+        .apply(_highlight_sre_changes, axis=None)
+        # Affiche les entiers sans décimales, cellule vide si null
+        .format(lambda x: f"{int(x)}" if pd.notna(x) else "", subset=year_cols)
+    )
     st.dataframe(styled, use_container_width=True, hide_index=True)
-
 
 def show_kpis(
     data_df: List[Dict], seuil: int = 450, year_range: Optional[Tuple[int, int]] = None
