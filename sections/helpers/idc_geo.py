@@ -143,4 +143,4 @@ def show_map(data: List[Dict], centroid: Tuple[float, float]) -> None:
             },
         },
     )
-    st.pydeck_chart(deck, use_container_width=True)
+    st.pydeck_chart(deck, width='stretch')

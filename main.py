@@ -76,7 +76,7 @@ with st.sidebar:
     st.divider()
 
     st.subheader("Base de données locale")
-    if st.button("Mettre à jour les adresses", use_container_width=True):
+    if st.button("Mettre à jour les adresses", width='stretch'):
         status_text = st.empty()
         progress_bar = st.progress(0.0)
         try:
@@ -119,11 +119,11 @@ with st.sidebar:
             fav = next(f for f in favorites if f["name"] == selected_fav_name)
             col_load, col_del = st.columns([3, 1])
             with col_load:
-                if st.button("Charger", key="btn_load_fav", use_container_width=True):
+                if st.button("Charger", key="btn_load_fav", width='stretch'):
                     st.session_state["address_multiselect"] = fav["labels"]
                     st.rerun()
             with col_del:
-                if st.button("✕", key="btn_del_fav", use_container_width=True):
+                if st.button("✕", key="btn_del_fav", width='stretch'):
                     delete_favorite(fav["id"])
                     st.rerun()
 
@@ -138,7 +138,7 @@ with st.sidebar:
                 placeholder="Ex : Bâtiments rue de Rive",
                 key="fav_name_input",
             )
-            if st.button("Sauvegarder", key="btn_save_fav", use_container_width=True):
+            if st.button("Sauvegarder", key="btn_save_fav", width='stretch'):
                 if fav_name_input.strip():
                     ok = save_favorite(
                         fav_name_input.strip(),
@@ -173,7 +173,7 @@ with st.sidebar:
                 if st.button(
                     label_short,
                     key=f"history_{entry['id']}",
-                    use_container_width=True,
+                    width='stretch',
                     help=ts_fmt,  # timestamp au survol
                 ):
                     st.session_state["address_multiselect"] = labels
@@ -182,7 +182,7 @@ with st.sidebar:
                 if st.button(
                     "✕",
                     key=f"history_del_{entry['id']}",
-                    use_container_width=True,
+                    width='stretch',
                 ):
                     delete_history_entry(entry["id"])
                     st.rerun()
@@ -264,7 +264,7 @@ filtered_options = (
 with col_all:
     if st.button(
         "Tout",
-        use_container_width=True,
+        width='stretch',
         help="Ajouter les résultats filtrés à la sélection",
     ):
         current = set(st.session_state["address_multiselect"])
@@ -273,7 +273,7 @@ with col_all:
         st.rerun()
 
 with col_clear:
-    if st.button("Aucun", use_container_width=True, help="Vider la sélection"):
+    if st.button("Aucun", width='stretch', help="Vider la sélection"):
         st.session_state["address_multiselect"] = []
         st.session_state["_pending_search_filter"] = ""
         st.rerun()
