@@ -62,9 +62,7 @@ with st.sidebar:
         max_value=2000,
         value=0,
         step=10,
-        help=(
-            "Valeur limite à Genève : 450 MJ/m²."
-        ),
+        help=("Valeur limite à Genève : 450 MJ/m²."),
     )
 
     year_range = st.slider(
@@ -211,9 +209,7 @@ df_addresses = get_all_addresses()
 
 df_addresses = df_addresses.with_columns(
     pl.col("egid").cast(pl.Utf8).fill_null("N/A").alias("egid_str")
-).with_columns(
-    (pl.col("adresse") + " (" + pl.col("egid_str") + ")").alias("display")
-)
+).with_columns((pl.col("adresse") + " (" + pl.col("egid_str") + ")").alias("display"))
 
 display_options = df_addresses["display"].to_list()
 options_map: dict[str, dict] = {
@@ -254,9 +250,7 @@ with col_all:
         help="Ajouter les résultats filtrés à la sélection",
     ):
         current = set(st.session_state["address_multiselect"])
-        st.session_state["address_multiselect"] = list(
-            current | set(filtered_options)
-        )
+        st.session_state["address_multiselect"] = list(current | set(filtered_options))
         st.session_state["_pending_search_filter"] = ""
         st.rerun()
 
@@ -307,9 +301,7 @@ with st.expander("Charger depuis une liste d'adresses"):
             for a in adresses_input
             if a.lower() in adresse_to_display
         ]
-        not_found = {
-            a for a in adresses_input if a.lower() not in adresse_to_display
-        }
+        not_found = {a for a in adresses_input if a.lower() not in adresse_to_display}
 
         if matched:
             # Use staging key — direct write after widget instantiation raises StreamlitAPIException
@@ -352,17 +344,15 @@ try:
             data_df = st.session_state["_api_df"]
 
         if data_geometry and data_df:
-            geojson_data, centroid = convert_geometry_for_streamlit(
-                    data_geometry
-                )
-        
+            geojson_data, centroid = convert_geometry_for_streamlit(data_geometry)
+
         #######################################################################
         st.divider()
-        
+
         # Chiffres-clé
         st.subheader("Chiffres-clé")
         show_kpis(data_df, seuil=seuil, year_range=year_range)
-        
+
         #######################################################################
         st.divider()
 
@@ -386,8 +376,6 @@ try:
         st.subheader("Données IDC")
         show_dataframe(data_df, seuil=seuil, year_range=year_range)
     else:
-        st.error(
-            "Pas de données disponibles pour le(s) EGID associé(s) à ce site."
-        )
+        st.error("Pas de données disponibles pour le(s) EGID associé(s) à ce site.")
 except Exception as e:
     st.error(f"Une erreur est survenue lors de l'analyse : {e}")
