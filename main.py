@@ -354,7 +354,6 @@ try:
         show_kpis(data_df, seuil=seuil, year_range=year_range)
 
         #######################################################################
-        st.divider()
 
         # Map
         st.subheader("Plan de situation")
@@ -362,7 +361,6 @@ try:
             show_map(geojson_data, centroid)
 
         #######################################################################
-        st.divider()
 
         # Barplot
         st.subheader("Historique IDC")
