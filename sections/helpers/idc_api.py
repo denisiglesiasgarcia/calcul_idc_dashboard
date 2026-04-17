@@ -40,6 +40,51 @@ RESULT_COLUMNS = [
     "nbre_preneur",
 ]
 
+# Schéma attendu après transformation — source de vérité pour les tests et la prod
+EXPECTED_SCHEMA: dict[str, pl.DataType] = {
+    "egid": pl.Int64,
+    "annee": pl.Int64,
+    "indice": pl.Int64,
+    "sre": pl.Int64,
+    "adresse": pl.String,
+    "npa": pl.Int64,
+    "commune": pl.String,
+    "destination": pl.String,
+    "agent_energetique_1": pl.String,
+    "quantite_agent_energetique_1": pl.Float64,
+    "unite_agent_energetique_1": pl.String,
+    "agent_energetique_2": pl.String,
+    "quantite_agent_energetique_2": pl.Float64,
+    "unite_agent_energetique_2": pl.String,
+    "agent_energetique_3": pl.String,
+    "quantite_agent_energetique_3": pl.Float64,
+    "unite_agent_energetique_3": pl.String,
+    "date_debut_periode": pl.Datetime("us"),
+    "date_fin_periode": pl.Datetime("us"),
+    "date_saisie": pl.Datetime("us"),
+    "indice_moy2": pl.Float64,
+    "annees_concernees_moy_2": pl.String,
+    "indice_moy3": pl.Float64,
+    "annees_concernees_moy_3": pl.String,
+    "id_concessionnaire": pl.Int64,
+    "nbre_preneur": pl.Int64,
+}
+
+
+def validate_schema(df: pl.DataFrame) -> list[str]:
+    """
+    Vérifie que le DataFrame correspond au schéma attendu.
+    Retourne une liste d'erreurs (vide si tout est correct).
+    """
+    errors = []
+    for col, expected_dtype in EXPECTED_SCHEMA.items():
+        if col not in df.columns:
+            errors.append(f"{col}: colonne absente")
+            continue
+        actual = df[col].dtype
+        if actual != expected_dtype:
+            errors.append(f"{col}: attendu {expected_dtype}, obtenu {actual}")
+    return errors
 
 def fetch_idc_data(
     egid: Union[int, List[int]],
@@ -110,6 +155,12 @@ def fetch_idc_data(
             .unique(subset=["egid", "annee"], keep="first")
             .sort(["egid", "annee"])
         )
+
+        # Validation du schéma — log les écarts sans lever d'exception
+        schema_errors = validate_schema(df)
+        if schema_errors:
+            for err in schema_errors:
+                logging.warning(f"{table_name} → schema mismatch: {err}")
 
         return geometry_records, df.to_dicts()
 

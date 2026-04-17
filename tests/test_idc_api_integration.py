@@ -9,31 +9,13 @@ import polars as pl
 import pytest
 import requests
 
-from sections.helpers.idc_api import fetch_idc_data, RESULT_COLUMNS
+from sections.helpers.idc_api import fetch_idc_data, RESULT_COLUMNS, validate_schema
 
 URL_SITG = (
     "https://vector.sitg.ge.ch/arcgis/rest/services/Hosted/"
     "SCANE_INDICE_MOYENNES_3_ANS/FeatureServer/0/query"
 )
 ADRESSE_TEST = "Rue de la Prairie 4"
-
-# Schéma attendu après transformation dans fetch_idc_data
-EXPECTED_SCHEMA = {
-    "egid": pl.Int64,
-    "annee": pl.Int64,
-    "indice": pl.Float64,
-    "sre": pl.Float64,
-    "adresse": pl.String,
-    "npa": pl.Int64,
-    "commune": pl.String,
-    "destination": pl.String,
-    "agent_energetique_1": pl.String,
-    "quantite_agent_energetique_1": pl.Float64,
-    "unite_agent_energetique_1": pl.String,
-    "date_debut_periode": pl.Datetime("ms"),
-    "date_fin_periode": pl.Datetime("ms"),
-    "date_saisie": pl.Datetime("ms"),
-}
 
 
 # ---------------------------------------------------------------------------
@@ -116,14 +98,7 @@ class TestDataSchema:
         assert not missing, f"Colonnes manquantes : {missing}"
 
     def test_column_dtypes(self):
-        errors = []
-        for col, expected_dtype in EXPECTED_SCHEMA.items():
-            if col not in self.df.columns:
-                errors.append(f"{col}: absent du DataFrame")
-                continue
-            actual = self.df[col].dtype
-            if actual != expected_dtype:
-                errors.append(f"{col}: attendu {expected_dtype}, obtenu {actual}")
+        errors = validate_schema(self.df)
         assert not errors, "\n".join(errors)
 
 
