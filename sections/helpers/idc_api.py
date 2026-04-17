@@ -86,6 +86,7 @@ def validate_schema(df: pl.DataFrame) -> list[str]:
             errors.append(f"{col}: attendu {expected_dtype}, obtenu {actual}")
     return errors
 
+
 def fetch_idc_data(
     egid: Union[int, List[int]],
     url: str,
