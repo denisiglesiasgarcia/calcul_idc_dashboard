@@ -85,7 +85,7 @@ def show_map(data: List[Dict], centroid: Tuple[float, float]) -> None:
         lats = [c[1] for c in all_coords]
         span = max(max(lons) - min(lons), max(lats) - min(lats))
         # Formule standard : 360° correspond au zoom 0, chaque doublement = +1 zoom
-        zoom = max(14, min(19, np.log2(0.2 / (span + 1e-9)) + 16))-2
+        zoom = max(14, min(19, np.log2(0.2 / (span + 1e-9)) + 16)) - 2
     else:
         zoom = 18
 
@@ -118,8 +118,7 @@ def show_map(data: List[Dict], centroid: Tuple[float, float]) -> None:
             unite = cleaned.get(f"unite_agent_energetique_{i}", "")
             # Construit un label complet ou chaîne vide
             cleaned[f"_agent_{i}_label"] = (
-                f"<b>Agent {i} :</b> {agent} — {qte} {unite or ''}"
-                if agent else ""
+                f"<b>Agent {i} :</b> {agent} — {qte} {unite or ''}" if agent else ""
             )
         return cleaned
 
@@ -137,7 +136,11 @@ def show_map(data: List[Dict], centroid: Tuple[float, float]) -> None:
                 "{_agent_2_label}<br/>"
                 "{_agent_3_label}"
             ),
-            "style": {"backgroundColor": "#1e1e2e", "color": "white", "fontSize": "13px"},
+            "style": {
+                "backgroundColor": "#1e1e2e",
+                "color": "white",
+                "fontSize": "13px",
+            },
         },
     )
     st.pydeck_chart(deck, use_container_width=True)
