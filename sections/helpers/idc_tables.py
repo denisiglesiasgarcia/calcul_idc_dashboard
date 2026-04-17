@@ -477,7 +477,6 @@ def show_sre_table(
 def show_kpis(
     data_df: List[Dict], seuil: int = 450, year_range: Optional[Tuple[int, int]] = None
 ) -> None:
-    import numpy as np
 
     df = pl.from_dicts(data_df).with_columns(
         [
@@ -557,19 +556,6 @@ def show_kpis(
     else:
         idc_moy3 = None
         idc_moy3_label = None
-
-    # Tendance : pente régression linéaire sur années avec données
-    df_agg_valid = df_agg.filter(pl.col("indice_pondere").is_not_null())
-    if len(df_agg_valid) >= 2:
-        slope = float(
-            np.polyfit(
-                df_agg_valid["annee"].to_numpy().astype(float),
-                df_agg_valid["indice_pondere"].to_numpy().astype(float),
-                1,
-            )[0]
-        )
-    else:
-        slope = None
 
     # Ratio première → dernière année
     df_first = df.filter(pl.col("annee") == first_year)
