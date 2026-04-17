@@ -388,8 +388,6 @@ try:
             create_barplot(data_df, title, seuil=seuil, year_range=year_range)
 
         #######################################################################
-      
-
 
         # Données IDC détaillées
         st.subheader("Données IDC")
