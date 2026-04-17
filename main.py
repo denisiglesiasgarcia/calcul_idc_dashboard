@@ -192,6 +192,8 @@ with st.sidebar:
 # ---------------------------------------------------------------------------------------
 st.subheader("Sélection adresse")
 
+# CSS pour améliorer l'affichage des tags (multiselect) — permet à chaque tag de s'afficher
+# en entier sans troncature, même avec du contenu long (ex: "Rue de Rive 10 (1234567)")
 st.markdown(
     """
     <style>
@@ -203,6 +205,28 @@ st.markdown(
     </style>
     """,
     unsafe_allow_html=True,
+)
+
+# st.expander custom CSS pour supprimer les bordures et ombres, mieux intégrer les sections
+st.markdown(
+    """
+    <style>
+        .streamlit-expander {
+            border: none;
+            box-shadow: none;
+        }
+
+        .streamlit-expanderHeader {
+            border-bottom: none;
+        }
+
+        .streamlit-expanderClosed .streamlit-expanderHeader,
+        .streamlit-expanderClosed .streamlit-expanderContent {
+            border: none;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
 )
 
 df_addresses = get_all_addresses()
@@ -370,25 +394,8 @@ try:
             create_barplot(data_df, title, seuil=seuil, year_range=year_range)
 
         #######################################################################
-        
-        st.markdown(
-            <style>
-                .streamlit-expander {
-                    border: none;
-                    box-shadow: none;
-                }
+      
 
-                .streamlit-expanderHeader {
-                    border-bottom: none;
-                }
-
-                .streamlit-expanderClosed .streamlit-expanderHeader,
-                .streamlit-expanderClosed .streamlit-expanderContent {
-                    border: none;
-                }
-            </style>
-            unsafe_allow_html=True
-        )
 
         # Données IDC détaillées
         st.subheader("Données IDC")
