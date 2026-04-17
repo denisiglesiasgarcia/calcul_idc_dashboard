@@ -358,6 +358,7 @@ try:
 
         # Map
         with st.expander("Plan de situation", expanded=True):
+            st.subheader("Chiffres-clé")
             show_map(geojson_data, centroid)
 
         #######################################################################
