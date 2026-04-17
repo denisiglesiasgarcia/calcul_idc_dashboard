@@ -28,8 +28,8 @@ st.set_page_config(
     initial_sidebar_state="expanded",
     menu_items={
         "Get Help": "https://www.streamlit.io/community",
-        "Report a bug": "https://github.com/yourusername/yourrepo/issues",
-        "About": "# My Dashboard\nCreated with Streamlit.",
+        "Report a bug": "https://github.com/denisiglesiasgarcia/calcul_idc_dashboard/issues",
+        "About": "# Dashboard IDC",
     },
 )
 
