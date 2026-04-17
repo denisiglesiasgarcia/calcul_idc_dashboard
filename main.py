@@ -23,13 +23,13 @@ from sections.helpers.idc_tables import show_kpis, show_dataframe
 
 st.set_page_config(
     layout="wide",
-    page_title="Outil de calcul de l'IDC",
+    page_title="Dashboard analyse IDC",
     page_icon="📈",
     initial_sidebar_state="expanded",
     menu_items={
         "Get Help": "https://www.streamlit.io/community",
         "Report a bug": "https://github.com/denisiglesiasgarcia/calcul_idc_dashboard/issues",
-        "About": "# Dashboard IDC",
+        "About": "# Dashboard analyse IDC",
     },
 )
 
