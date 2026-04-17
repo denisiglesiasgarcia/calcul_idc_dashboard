@@ -357,8 +357,8 @@ try:
         st.divider()
 
         # Map
-        with st.expander("Plan de situation", expanded=True):
-            st.subheader("Chiffres-clé")
+        st.subheader("Plan de situation")
+        with st.expander(expanded=True):
             show_map(geojson_data, centroid)
 
         #######################################################################
