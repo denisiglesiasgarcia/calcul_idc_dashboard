@@ -63,8 +63,7 @@ with st.sidebar:
         value=0,
         step=10,
         help=(
-            "Seuil indicatif pour l'évaluation de la conformité énergétique. "
-            "Valeur typique pour bâtiment résidentiel à Genève : 450 MJ/m²."
+            "Valeur limite à Genève : 450 MJ/m²."
         ),
     )
 
