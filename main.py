@@ -226,7 +226,7 @@ st.markdown(
         }
     </style>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
 df_addresses = get_all_addresses()
@@ -394,8 +394,6 @@ try:
             create_barplot(data_df, title, seuil=seuil, year_range=year_range)
 
         #######################################################################
-      
-
 
         # Données IDC détaillées
         st.subheader("Données IDC")
