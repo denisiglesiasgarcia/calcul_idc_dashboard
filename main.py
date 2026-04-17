@@ -358,7 +358,7 @@ try:
 
         # Map
         st.subheader("Plan de situation")
-        with st.expander("",expanded=True):
+        with st.expander("Afficher la carte", expanded=True):
             show_map(geojson_data, centroid)
 
         #######################################################################
