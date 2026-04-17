@@ -62,18 +62,35 @@ EXPECTED_SCHEMA: dict[str, pl.DataType] = {
     "date_debut_periode": pl.Datetime("us"),
     "date_fin_periode": pl.Datetime("us"),
     "date_saisie": pl.Datetime("us"),
-    "indice_moy2": pl.Float64,
+    "indice_moy2": pl.Int64,
     "annees_concernees_moy_2": pl.String,
-    "indice_moy3": pl.Float64,
+    "indice_moy3": pl.Int64,
     "annees_concernees_moy_3": pl.String,
     "id_concessionnaire": pl.Int64,
     "nbre_preneur": pl.Int64,
+}
+
+NULLABLE_COLUMNS = {
+    "agent_energetique_2",
+    "quantite_agent_energetique_2",
+    "unite_agent_energetique_2",
+    "agent_energetique_3",
+    "quantite_agent_energetique_3",
+    "unite_agent_energetique_3",
+    "indice_moy2",
+    "annees_concernees_moy_2",
+    "indice_moy3",
+    "annees_concernees_moy_3",
+    "id_concessionnaire",
+    "nbre_preneur",
 }
 
 
 def validate_schema(df: pl.DataFrame) -> list[str]:
     """
     Vérifie que le DataFrame correspond au schéma attendu.
+    Les colonnes dans NULLABLE_COLUMNS sont acceptées avec le type Null
+    si toutes leurs valeurs sont nulles.
     Retourne une liste d'erreurs (vide si tout est correct).
     """
     errors = []
@@ -82,9 +99,12 @@ def validate_schema(df: pl.DataFrame) -> list[str]:
             errors.append(f"{col}: colonne absente")
             continue
         actual = df[col].dtype
+        if actual == pl.Null and col in NULLABLE_COLUMNS:
+            continue  # Colonne optionnelle entièrement nulle — acceptable
         if actual != expected_dtype:
             errors.append(f"{col}: attendu {expected_dtype}, obtenu {actual}")
     return errors
+
 
 def fetch_idc_data(
     egid: Union[int, List[int]],
