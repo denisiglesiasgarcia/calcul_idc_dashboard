@@ -620,12 +620,33 @@ def show_kpis(
         agent_value = "N/A"
         n_changed = 0
 
-    # Variation SRE
-    sre_last = df_latest["sre"].sum()
-    if sre_first and sre_first > 0 and sre_last and sre_last > 0:
-        sre_delta = sre_last - sre_first
+    # Variation SRE — utilise les années où tous les bâtiments ont une SRE valide
+    n_egids_sre = df["egid"].n_unique()
+    df_sre_coverage = (
+        df.filter(pl.col("sre").is_not_null() & (pl.col("sre") > 0))
+        .group_by("annee")
+        .agg(pl.col("egid").n_unique().alias("n_egids_with_sre"))
+        .filter(pl.col("n_egids_with_sre") == n_egids_sre)
+        .sort("annee")
+    )
+    if not df_sre_coverage.is_empty():
+        sre_year_first = df_sre_coverage["annee"].min()
+        sre_year_last = df_sre_coverage["annee"].max()
+        sre_val_first = df.filter(pl.col("annee") == sre_year_first)["sre"].sum()
+        sre_val_last = df.filter(pl.col("annee") == sre_year_last)["sre"].sum()
+        if sre_val_first and sre_val_first > 0 and sre_val_last and sre_val_last > 0:
+            sre_delta = sre_val_last - sre_val_first
+        else:
+            sre_delta = None
     else:
-        sre_delta = None
+        sre_year_first = first_year
+        sre_year_last = latest_year
+        sre_val_first = sre_first
+        sre_val_last = df_latest["sre"].sum()
+        if sre_val_first and sre_val_first > 0 and sre_val_last and sre_val_last > 0:
+            sre_delta = sre_val_last - sre_val_first
+        else:
+            sre_delta = None
 
     # Variation absolue IDC vs seuil
     delta_abs = idc_current - seuil
@@ -694,15 +715,15 @@ def show_kpis(
             else "up"
         )
         st.metric(
-            label=f"Variation SRE ({first_year}→{latest_year})",
+            label=f"Variation SRE ({sre_year_first}→{sre_year_last})",
             value=f"{sre_delta:+.0f} m²"
             if sre_delta != 0 and sre_delta is not None
             else "Aucune"
             if sre_delta == 0
             else "",
-            delta=f"{sre_first:+.0f} → {sre_last:+.0f} m²"
-            if sre_delta != 0 and sre_first is not None and sre_last is not None
+            delta=f"{sre_val_first:+.0f} → {sre_val_last:+.0f} m²"
+            if sre_delta != 0 and sre_val_first is not None and sre_val_last is not None
             else "",
             delta_arrow=arrow_col6,
-            help="Variation de la SRE totale entre première et dernière année.",
+            help="Variation de la SRE totale entre la première et la dernière année où tous les bâtiments ont une SRE. Si aucune telle année n'existe, la première et la dernière année de la période sont utilisées.",
         )
