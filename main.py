@@ -366,9 +366,10 @@ try:
 
         # Barplot
         st.subheader("Historique IDC")
-        adresses_titre = st.session_state["data_verif_idc"]["adresse"].to_list()
-        title = ", ".join(adresses_titre)
-        create_barplot(data_df, title, seuil=seuil, year_range=year_range)
+        with st.expander("Afficher graphique", expanded=True):
+            adresses_titre = st.session_state["data_verif_idc"]["adresse"].to_list()
+            title = ", ".join(adresses_titre)
+            create_barplot(data_df, title, seuil=seuil, year_range=year_range)
 
         #######################################################################
         st.divider()
