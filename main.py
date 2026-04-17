@@ -370,7 +370,25 @@ try:
             create_barplot(data_df, title, seuil=seuil, year_range=year_range)
 
         #######################################################################
-        st.divider()
+        
+        st.markdown(
+            <style>
+                .streamlit-expander {
+                    border: none;
+                    box-shadow: none;
+                }
+
+                .streamlit-expanderHeader {
+                    border-bottom: none;
+                }
+
+                .streamlit-expanderClosed .streamlit-expanderHeader,
+                .streamlit-expanderClosed .streamlit-expanderContent {
+                    border: none;
+                }
+            </style>
+            unsafe_allow_html=True
+        )
 
         # Données IDC détaillées
         st.subheader("Données IDC")
