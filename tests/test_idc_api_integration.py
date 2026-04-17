@@ -75,7 +75,9 @@ def api_result(egid_prairie):
 class TestFetchReturnTypes:
     def test_geometry_is_list(self, api_result):
         geometry_records, _ = api_result
-        assert isinstance(geometry_records, list), "geometry_records doit être une liste"
+        assert isinstance(geometry_records, list), (
+            "geometry_records doit être une liste"
+        )
 
     def test_data_is_list(self, api_result):
         _, data_records = api_result
@@ -89,7 +91,9 @@ class TestFetchReturnTypes:
     def test_geometry_has_required_keys(self, api_result):
         geometry_records, _ = api_result
         for rec in geometry_records:
-            assert "attributes" in rec, "Clé 'attributes' manquante dans geometry_records"
+            assert "attributes" in rec, (
+                "Clé 'attributes' manquante dans geometry_records"
+            )
             assert "geometry" in rec, "Clé 'geometry' manquante dans geometry_records"
 
     def test_geometry_has_rings(self, api_result):
@@ -179,9 +183,7 @@ class TestDataQuality:
         invalid = self.df.filter(
             pl.col("date_debut_periode") >= pl.col("date_fin_periode")
         )
-        assert len(invalid) == 0, (
-            f"{len(invalid)} ligne(s) avec date_debut >= date_fin"
-        )
+        assert len(invalid) == 0, f"{len(invalid)} ligne(s) avec date_debut >= date_fin"
 
     def test_agent_energetique_1_not_null(self):
         """L'agent principal doit toujours être renseigné."""
