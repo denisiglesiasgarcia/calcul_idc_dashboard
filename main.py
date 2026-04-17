@@ -211,22 +211,16 @@ st.markdown(
 st.markdown(
     """
     <style>
-        .streamlit-expander {
+        [data-testid="stExpander"] {
             border: none;
             box-shadow: none;
         }
-
-        .streamlit-expanderHeader {
+        [data-testid="stExpander"] summary {
             border-bottom: none;
-        }
-
-        .streamlit-expanderClosed .streamlit-expanderHeader,
-        .streamlit-expanderClosed .streamlit-expanderContent {
-            border: none;
         }
     </style>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
 df_addresses = get_all_addresses()
