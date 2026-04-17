@@ -585,8 +585,10 @@ def show_kpis(
         else None
     )
 
-    # Années manquantes dans la plage
-    all_years = set(range(first_year, latest_year + 1))
+    # Années manquantes dans la plage (utilise les bornes du slider si disponibles)
+    range_start = year_range[0] if year_range else first_year
+    range_end = year_range[1] if year_range else latest_year
+    all_years = set(range(range_start, range_end + 1))
     years_with_data = set(df["annee"].unique().to_list())
     missing_years = sorted(all_years - years_with_data)
     n_missing = len(missing_years)
