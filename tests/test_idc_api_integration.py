@@ -2,7 +2,7 @@
 """
 Tests d'intégration sur l'API SITG publique.
 Pas de mock — appels réels, pas de secrets requis.
-Adresse de référence : "rue de la Prairie 4", Genève.
+Adresse de référence : "Rue de la Prairie 4", Genève.
 """
 
 import polars as pl
@@ -15,7 +15,7 @@ URL_SITG = (
     "https://vector.sitg.ge.ch/arcgis/rest/services/Hosted/"
     "SCANE_INDICE_MOYENNES_3_ANS/FeatureServer/0/query"
 )
-ADRESSE_TEST = "rue de la Prairie 4"
+ADRESSE_TEST = "Rue de la Prairie 4"
 
 # Schéma attendu après transformation dans fetch_idc_data
 EXPECTED_SCHEMA = {
