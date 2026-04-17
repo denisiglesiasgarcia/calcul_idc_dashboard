@@ -368,8 +368,8 @@ try:
         st.divider()
 
         # Map
-        st.subheader("Plan de situation")
-        show_map(geojson_data, centroid)
+        with st.expander("Plan de situation", expanded=True):
+            show_map(geojson_data, centroid)
 
         #######################################################################
         st.divider()
