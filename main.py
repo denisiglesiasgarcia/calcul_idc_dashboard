@@ -392,6 +392,8 @@ try:
         st.subheader("Données IDC")
         show_dataframe(data_df, seuil=seuil, year_range=year_range)
     else:
-        st.warning("Veuillez renseigner une ou plusieurs adresses pour afficher les données IDC.")
+        st.warning(
+            "Veuillez renseigner une ou plusieurs adresses pour afficher les données IDC."
+        )
 except Exception as e:
     st.error(f"Une erreur est survenue lors de l'analyse : {e}")
