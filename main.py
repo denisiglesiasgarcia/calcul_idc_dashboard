@@ -73,8 +73,6 @@ with st.sidebar:
         step=1,
     )
 
-    st.divider()
-
     st.subheader("Base de données locale")
     if st.button("Mettre à jour les adresses", width="stretch"):
         status_text = st.empty()
@@ -99,9 +97,7 @@ with st.sidebar:
         "du SITG (Genève)."
     )
 
-    st.divider()
     st.subheader("Favoris")
-
     favorites = load_favorites()
 
     if not favorites:
