@@ -156,13 +156,13 @@ def show_dataframe(
     # --- Highlight rows above seuil via pandas styler ---
     df_pd = df_display.to_pandas()
 
-    def highlight_seuil(row):
-        """Red background only when IDC exceeds seuil and seuil is non-zero."""
-        if seuil > 0 and "indice" in row.index and row["indice"] > seuil:
-            return ["background-color: #fdd" for _ in row]
-        return ["" for _ in row]
+    def _highlight_seuil_col(col_series):
+        if seuil <= 0 or "indice" not in df_pd.columns:
+            return [""] * len(col_series)
+        mask = df_pd["indice"] > seuil
+        return ["background-color: #fdd" if v else "" for v in mask]
 
-    styled = df_pd.style.apply(highlight_seuil, axis=1)
+    styled = df_pd.style.apply(_highlight_seuil_col)
 
     st.dataframe(
         styled,
@@ -456,12 +456,13 @@ def show_sre_table(
         Cast en float pour éviter les problèmes avec les entiers nullable pandas (Int64/pd.NA).
         """
         styles = pd.DataFrame("", index=df.index, columns=df.columns)
+        df_float = df[year_cols].astype("float")
         for i in range(1, len(year_cols)):
             prev, curr = year_cols[i - 1], year_cols[i]
             if prev not in df.columns or curr not in df.columns:
                 continue
-            prev_f = df[prev].astype("float")
-            curr_f = df[curr].astype("float")
+            prev_f = df_float[prev]
+            curr_f = df_float[curr]
             changed = curr_f.notna() & prev_f.notna() & ((curr_f - prev_f).abs() > 1)
             styles.loc[changed, curr] = "background-color: #fff3cd; font-weight: bold"
         return styles

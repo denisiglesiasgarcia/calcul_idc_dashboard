@@ -73,11 +73,8 @@ def validate_data(data: Union[pd.DataFrame, Dict[str, Any]]) -> pd.DataFrame:
             df = pd.DataFrame(processed_items)
 
         elif isinstance(data, pd.DataFrame):
-            # Deep copy to avoid modifying original
-            df = data.copy()
-
             # Handle missing values consistently
-            df = df.replace({np.nan: "", None: "", "nan": "", "None": "", "NaT": ""})
+            df = data.replace({np.nan: "", None: "", "nan": "", "None": "", "NaT": ""})
 
             # Convert any remaining problematic types
             for col in df.columns:
@@ -138,7 +135,7 @@ def convert_df_to_excel(data: Union[pd.DataFrame, Dict[str, Any]]) -> bytes:
                 column = df[col]
                 # Calculate max length considering header and content
                 max_length = max(
-                    max(column.astype(str).apply(len).max(), len(str(col)))
+                    max(column.astype(str).str.len().max(), len(str(col)))
                     + 2,  # Add padding
                     5,  # Minimum width
                 )
