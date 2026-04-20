@@ -1,6 +1,8 @@
-# Dashboard IDC — Analyse des indices de dépense calorifique
+# Dashboard analyse IDC
 
-Application Streamlit pour visualiser et analyser les IDC (Indices de Dépense Calorifique) des bâtiments genevois. Les données proviennent de la base SCANE_INDICE_MOYENNES_3_ANS du [SITG](https://ge.ch/sitg/).
+[calculidc.streamlit.app/](https://calculidc.streamlit.app)
+
+Application Streamlit pour visualiser et analyser les IDC (Indices de Dépense Chaleur). Les données proviennent de [SCANE_INDICE_MOYENNES_3_ANS](https://sitg.ge.ch/donnees/scane-indice-moyennes-3-ans).
 
 ## Prérequis
 
@@ -39,15 +41,20 @@ uv run streamlit run main.py
 
 ### Sélection des bâtiments
 
-- Recherche par adresse (base locale synchronisée depuis le SITG)
-- Sauvegarde de sélections sous forme de favoris
-- Historique des consultations
+- Recherche par adresse (base de données Postgresql mise à jour depuis SITG)
+- Analyse de plusieurs bâtiments au même temps
+- Sauvegarde favoris
+- Historique
 
 ### Visualisations
 
-- Graphique en barres de l'IDC annuel par bâtiment, avec moyenne glissante sur 3 ans
-- Carte géographique avec coloration par niveau d'IDC
-- Tableaux détaillés : données brutes, agrégation par année, agents énergétiques, surface SRE
+- Graphique en barres de l'évolution de l'IDC par année
+- Plan de situation OpenStreetMap
+- Données tabulaires
+  - Toutes les données
+  - IDC pondéré par année (cas plusieurs bâtiments) avec variations
+  - Agents énergétiques par année et par bâtiment (en jaune/gras si changement)
+  - Surface de référence énergétique par année et bâtiment (en jaune/gras si changement)
 
 ### Indicateurs clés (KPIs)
 

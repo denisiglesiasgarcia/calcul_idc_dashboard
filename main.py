@@ -148,7 +148,6 @@ with st.sidebar:
                 else:
                     st.warning("Saisissez un nom avant de sauvegarder.")
 
-    st.divider()
     st.subheader("Historique des adresses")
 
     history_entries = load_history(n=20)
