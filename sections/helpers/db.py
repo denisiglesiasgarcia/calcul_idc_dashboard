@@ -249,8 +249,10 @@ def save_history_entry(selected_options: list[str]) -> None:
             )
         cur.close()
     conn.close()
+    load_history.clear()
 
 
+@st.cache_data(ttl=30)
 def load_history(n: int = 20) -> list[dict]:
     conn = _get_conn()
     cur = conn.cursor()
@@ -269,6 +271,7 @@ def delete_history_entry(entry_id: int) -> None:
     with conn:
         _execute(conn, "DELETE FROM consultation_history WHERE id = %s", (entry_id,))
     conn.close()
+    load_history.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +289,7 @@ def save_favorite(name: str, labels: list[str]) -> bool:
                 "INSERT INTO adresses_favorites (name, labels) VALUES (%s, %s)",
                 (name, labels_json),
             )
+        load_favorites.clear()
         return True
     except psycopg2.errors.UniqueViolation:
         return False
@@ -293,6 +297,7 @@ def save_favorite(name: str, labels: list[str]) -> bool:
         conn.close()
 
 
+@st.cache_data(ttl=30)
 def load_favorites() -> list[dict]:
     conn = _get_conn()
     cur = conn.cursor()
@@ -308,6 +313,7 @@ def delete_favorite(fav_id: int) -> None:
     with conn:
         _execute(conn, "DELETE FROM adresses_favorites WHERE id = %s", (fav_id,))
     conn.close()
+    load_favorites.clear()
 
 
 # ---------------------------------------------------------------------------
