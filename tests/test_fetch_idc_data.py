@@ -3,7 +3,6 @@
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
 import requests
 
 from sections.helpers.idc_api import RESULT_COLUMNS, fetch_idc_data
@@ -109,7 +108,9 @@ class TestFetchIdcDataSuccess:
         assert len(data) == 2
 
     def test_list_egid_builds_in_clause(self):
-        with patch("requests.get", return_value=_ok_response([_make_feature()])) as mock_get:
+        with patch(
+            "requests.get", return_value=_ok_response([_make_feature()])
+        ) as mock_get:
             fetch_idc_data([1, 2], "http://fake")
         where = mock_get.call_args[1]["params"]["where"]
         assert "IN" in where
@@ -117,7 +118,9 @@ class TestFetchIdcDataSuccess:
         assert "2" in where
 
     def test_single_egid_builds_eq_clause(self):
-        with patch("requests.get", return_value=_ok_response([_make_feature()])) as mock_get:
+        with patch(
+            "requests.get", return_value=_ok_response([_make_feature()])
+        ) as mock_get:
             fetch_idc_data(100, "http://fake")
         where = mock_get.call_args[1]["params"]["where"]
         assert "egid=100" in where
@@ -138,7 +141,9 @@ class TestFetchIdcDataSuccess:
 
 class TestFetchIdcDataErrors:
     def test_connection_error_returns_none_none(self):
-        with patch("requests.get", side_effect=requests.exceptions.ConnectionError("err")):
+        with patch(
+            "requests.get", side_effect=requests.exceptions.ConnectionError("err")
+        ):
             geo, data = fetch_idc_data(1, "http://fake")
         assert geo is None
         assert data is None

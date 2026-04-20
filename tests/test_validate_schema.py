@@ -5,7 +5,7 @@ from datetime import datetime
 import polars as pl
 import pytest
 
-from sections.helpers.idc_api import EXPECTED_SCHEMA, NULLABLE_COLUMNS, validate_schema
+from sections.helpers.idc_api import EXPECTED_SCHEMA, validate_schema
 
 
 @pytest.fixture
@@ -97,8 +97,6 @@ def test_wrong_dtype_string_instead_of_int64(valid_df):
 
 
 def test_wrong_dtype_int_instead_of_float(valid_df):
-    df = valid_df.with_columns(
-        pl.col("quantite_agent_energetique_1").cast(pl.Int64)
-    )
+    df = valid_df.with_columns(pl.col("quantite_agent_energetique_1").cast(pl.Int64))
     errors = validate_schema(df)
     assert any("quantite_agent_energetique_1" in e for e in errors)
