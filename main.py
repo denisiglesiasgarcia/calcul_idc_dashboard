@@ -382,10 +382,9 @@ try:
 
         # Barplot
         st.subheader("Historique IDC")
-        with st.expander("Afficher graphique", expanded=True):
-            adresses_titre = st.session_state["data_verif_idc"]["adresse"].to_list()
-            title = ", ".join(adresses_titre)
-            create_barplot(data_df, title, seuil=seuil, year_range=year_range)
+        adresses_titre = st.session_state["data_verif_idc"]["adresse"].to_list()
+        title = ", ".join(adresses_titre)
+        create_barplot(data_df, title, seuil=seuil, year_range=year_range)
 
         #######################################################################
 
@@ -393,6 +392,6 @@ try:
         st.subheader("Données IDC")
         show_dataframe(data_df, seuil=seuil, year_range=year_range)
     else:
-        st.error("Pas de données disponibles pour le(s) EGID associé(s) à ce site.")
+        st.warning("Veuillez renseigner une ou plusieurs adresses pour afficher les données IDC.")
 except Exception as e:
     st.error(f"Une erreur est survenue lors de l'analyse : {e}")
