@@ -93,8 +93,8 @@ with st.sidebar:
             status_text.empty()
             st.error(f"Erreur lors de la mise à jour : {e}")
     st.caption(
-        "Les données proviennent de la base SCANE_INDICE_MOYENNES_3_ANS "
-        "du SITG (Genève)."
+        "Origine données: [SCANE_INDICE_MOYENNES_3_ANS]"
+        "(https://sitg.ge.ch/donnees/scane-indice-moyennes-3-ans)."
     )
 
     st.subheader("Favoris")
