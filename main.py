@@ -73,8 +73,8 @@ with st.sidebar:
         step=1,
     )
 
-    st.subheader("Base de données locale")
-    if st.button("Mettre à jour les adresses", width="stretch"):
+    st.subheader("Base de données adresses")
+    if st.button("Mise à jour", width="stretch"):
         status_text = st.empty()
         progress_bar = st.progress(0.0)
         try:
