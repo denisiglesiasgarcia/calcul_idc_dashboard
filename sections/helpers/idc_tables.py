@@ -734,9 +734,7 @@ def show_kpis(
     # ── Ligne 2 : Dossiers d'autorisation ─────────────────────────────────────
     if autor_records is not None:
         n_autor_total = len(autor_records)
-        n_agr = sum(
-            1 for r in autor_records if r.get("type_operation") == "AGR"
-        )
+        n_agr = sum(1 for r in autor_records if r.get("type_operation") == "AGR")
         col_a1, col_a2, *_ = st.columns(6)
         with col_a1:
             st.metric(
