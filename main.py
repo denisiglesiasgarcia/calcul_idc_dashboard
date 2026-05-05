@@ -441,7 +441,9 @@ try:
                             df_autor["type_operation"].drop_nulls().unique().to_list()
                         )
                         selected_ops = st.multiselect(
-                            "Type d'opération", options=ops, default=ops,
+                            "Type d'opération",
+                            options=ops,
+                            default=ops,
                             key="autor_filter_operation",
                         )
                     with col_st:
@@ -449,7 +451,9 @@ try:
                             df_autor["statut"].drop_nulls().unique().to_list()
                         )
                         selected_statuts = st.multiselect(
-                            "Statut", options=statuts, default=statuts,
+                            "Statut",
+                            options=statuts,
+                            default=statuts,
                             key="autor_filter_statut",
                         )
 
@@ -463,20 +467,28 @@ try:
                         )
 
                     st.dataframe(
-                        df_autor.select([
-                            "date_depot", "egid", "id_dossier", "type_dossier",
-                            "type_operation", "statut", "description", "lien_sad",
-                        ]).to_pandas(),
+                        df_autor.select(
+                            [
+                                "date_depot",
+                                "egid",
+                                "id_dossier",
+                                "type_dossier",
+                                "type_operation",
+                                "statut",
+                                "description",
+                                "lien_sad",
+                            ]
+                        ).to_pandas(),
                         width="stretch",
                         hide_index=True,
                         column_config={
-                            "date_depot":     st.column_config.TextColumn("Date dépôt"),
-                            "egid":           st.column_config.TextColumn("EGID"),
-                            "id_dossier":     st.column_config.TextColumn("Dossier"),
-                            "type_dossier":   st.column_config.TextColumn("Type"),
+                            "date_depot": st.column_config.TextColumn("Date dépôt"),
+                            "egid": st.column_config.TextColumn("EGID"),
+                            "id_dossier": st.column_config.TextColumn("Dossier"),
+                            "type_dossier": st.column_config.TextColumn("Type"),
                             "type_operation": st.column_config.TextColumn("Opération"),
-                            "statut":         st.column_config.TextColumn("Statut"),
-                            "description":    st.column_config.TextColumn("Description"),
+                            "statut": st.column_config.TextColumn("Statut"),
+                            "description": st.column_config.TextColumn("Description"),
                             "lien_sad": st.column_config.LinkColumn(
                                 "Lien SAD", display_text="Consulter"
                             ),
