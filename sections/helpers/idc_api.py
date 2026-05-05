@@ -2,11 +2,9 @@
 
 import json
 import logging
-from typing import Dict, List, Optional, Tuple, Union
 
 import polars as pl
 import requests
-
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -107,12 +105,12 @@ def validate_schema(df: pl.DataFrame) -> list[str]:
 
 
 def fetch_idc_data(
-    egid: Union[int, List[int]],
+    egid: int | list[int],
     url: str,
     fields: str = "*",
     chunk_size: int = 1000,
     table_name: str = "SCANE_INDICE_MOYENNES_3_ANS",
-) -> Tuple[Optional[List[Dict]], Optional[List[Dict]]]:
+) -> tuple[list[dict] | None, list[dict] | None]:
     """
     Single API call replacing the previous two separate make_request() calls.
 
@@ -201,8 +199,8 @@ def make_request(
     chunk_size: int,
     table_name: str,
     geometry: bool,
-    egid: Union[int, List[int]],
-) -> Optional[List[Dict]]:
+    egid: int | list[int],
+) -> list[dict] | None:
     """Legacy wrapper around fetch_idc_data(). Prefer fetch_idc_data() for new code."""
     geo, data = fetch_idc_data(egid, url, fields, chunk_size, table_name)
     return geo if geometry else data

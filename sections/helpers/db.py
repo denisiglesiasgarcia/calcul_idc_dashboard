@@ -227,9 +227,18 @@ def load_autorizations_by_egids(egids: tuple) -> list[dict]:
     cur.close()
     conn.close()
     cols = [
-        "egid", "commune", "id_dossier", "type_dossier", "type_operation",
-        "nom_dossier", "statut", "date_depot", "description", "operation",
-        "lien_sad", "date_maj",
+        "egid",
+        "commune",
+        "id_dossier",
+        "type_dossier",
+        "type_operation",
+        "nom_dossier",
+        "statut",
+        "date_depot",
+        "description",
+        "operation",
+        "lien_sad",
+        "date_maj",
     ]
     return [dict(zip(cols, r)) for r in rows]
 
