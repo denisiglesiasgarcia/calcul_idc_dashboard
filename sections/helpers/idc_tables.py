@@ -202,19 +202,22 @@ def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
     st.caption(f"Agrégation de {n_egids} bâtiments — pondération par surface SRE")
 
     df_grouped = (
-        df_display
-        .with_columns([
-            pl.col("sre").cast(pl.Float64),
-            pl.col("indice").cast(pl.Float64),
-        ])
+        df_display.with_columns(
+            [
+                pl.col("sre").cast(pl.Float64),
+                pl.col("indice").cast(pl.Float64),
+            ]
+        )
         .group_by("annee")
-        .agg([
-            (pl.col("indice") * pl.col("sre")).sum().alias("_indice_x_sre"),
-            pl.col("sre").sum().alias("sre_totale"),
-            pl.col("indice").min().alias("indice_min"),
-            pl.col("indice").max().alias("indice_max"),
-            pl.col("egid").n_unique().alias("n_batiments"),
-        ])
+        .agg(
+            [
+                (pl.col("indice") * pl.col("sre")).sum().alias("_indice_x_sre"),
+                pl.col("sre").sum().alias("sre_totale"),
+                pl.col("indice").min().alias("indice_min"),
+                pl.col("indice").max().alias("indice_max"),
+                pl.col("egid").n_unique().alias("n_batiments"),
+            ]
+        )
         .with_columns(
             (pl.col("_indice_x_sre") / pl.col("sre_totale"))
             .round(0)
@@ -224,23 +227,23 @@ def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
         .drop("_indice_x_sre")
         .sort("annee")
         .with_columns(
-            pl
-            .col("indice_pondere")
+            pl.col("indice_pondere")
             .cast(pl.Float64)
             .rolling_mean(window_size=3, min_periods=3)
             .round(0)
             .cast(pl.Int64)
             .alias("indice_moy3_calcule")
         )
-        .with_columns([
-            # Retrieve the 2 preceding years for the label
-            pl.col("annee").shift(2).alias("_y2"),
-            pl.col("annee").shift(1).alias("_y1"),
-        ])
+        .with_columns(
+            [
+                # Retrieve the 2 preceding years for the label
+                pl.col("annee").shift(2).alias("_y2"),
+                pl.col("annee").shift(1).alias("_y1"),
+            ]
+        )
         .with_columns(
             # Only populate when rolling mean is valid (3 years available)
-            pl
-            .when(pl.col("indice_moy3_calcule").is_not_null())
+            pl.when(pl.col("indice_moy3_calcule").is_not_null())
             .then(
                 pl.col("_y2").cast(pl.Utf8)
                 + ", "
@@ -254,8 +257,7 @@ def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
         .drop(["_y2", "_y1"])
         # Delta year-over-year — nul pour la première ligne
         .with_columns(
-            pl
-            .col("indice_pondere")
+            pl.col("indice_pondere")
             .cast(pl.Float64)
             .diff()
             .round(0)
@@ -360,8 +362,7 @@ def show_energy_agents_table(
 
     # Concatène les agents non-vides séparés par " / "
     df = df.with_columns(
-        pl
-        .concat_str(
+        pl.concat_str(
             [pl.col(c) for c in agent_cols],
             separator=" / ",
             ignore_nulls=True,
@@ -482,10 +483,12 @@ def show_kpis(
     data_df: list[dict], seuil: int = 450, year_range: tuple[int, int] | None = None
 ) -> None:
 
-    df = pl.from_dicts(data_df).with_columns([
-        pl.col("sre").cast(pl.Float64),
-        pl.col("indice").cast(pl.Float64),
-    ])
+    df = pl.from_dicts(data_df).with_columns(
+        [
+            pl.col("sre").cast(pl.Float64),
+            pl.col("indice").cast(pl.Float64),
+        ]
+    )
 
     # Respect du slider — filtre avant tout calcul
     if year_range:
@@ -504,16 +507,16 @@ def show_kpis(
 
     # Agrégation annuelle pondérée SRE
     df_agg = (
-        df
-        .group_by("annee")
-        .agg([
-            (pl.col("indice") * pl.col("sre")).sum().alias("_indice_x_sre"),
-            pl.col("sre").sum().alias("_sre_total"),
-            pl.col("indice").mean().alias("_indice_mean"),
-        ])
+        df.group_by("annee")
+        .agg(
+            [
+                (pl.col("indice") * pl.col("sre")).sum().alias("_indice_x_sre"),
+                pl.col("sre").sum().alias("_sre_total"),
+                pl.col("indice").mean().alias("_indice_mean"),
+            ]
+        )
         .with_columns(
-            pl
-            .when(pl.col("_sre_total") > 0)
+            pl.when(pl.col("_sre_total") > 0)
             .then(pl.col("_indice_x_sre") / pl.col("_sre_total"))
             .otherwise(pl.col("_indice_mean"))
             .round(0)
@@ -522,20 +525,20 @@ def show_kpis(
         .drop(["_indice_x_sre", "_sre_total", "_indice_mean"])
         .sort("annee")
         .with_columns(
-            pl
-            .col("indice_pondere")
+            pl.col("indice_pondere")
             .cast(pl.Float64)
             .rolling_mean(window_size=3, min_periods=3)
             .round(0)
             .alias("indice_pondere_moy3")
         )
-        .with_columns([
-            pl.col("annee").shift(2).alias("_y2"),
-            pl.col("annee").shift(1).alias("_y1"),
-        ])
         .with_columns(
-            pl
-            .when(pl.col("indice_pondere_moy3").is_not_null())
+            [
+                pl.col("annee").shift(2).alias("_y2"),
+                pl.col("annee").shift(1).alias("_y1"),
+            ]
+        )
+        .with_columns(
+            pl.when(pl.col("indice_pondere_moy3").is_not_null())
             .then(
                 pl.col("_y2").cast(pl.Utf8)
                 + ", "
@@ -586,8 +589,7 @@ def show_kpis(
 
     # Changement agent énergétique par EGID
     df_agents = (
-        df
-        .filter(pl.col("annee").is_in([first_year, latest_year]))
+        df.filter(pl.col("annee").is_in([first_year, latest_year]))
         .group_by(["egid", "annee"])
         .agg(pl.col("agent_energetique_1").first())
         .sort(["egid", "annee"])
@@ -612,8 +614,7 @@ def show_kpis(
     # Variation SRE — utilise les années où tous les bâtiments ont une SRE valide
     n_egids_sre = df["egid"].n_unique()
     df_sre_coverage = (
-        df
-        .filter(pl.col("sre").is_not_null() & (pl.col("sre") > 0))
+        df.filter(pl.col("sre").is_not_null() & (pl.col("sre") > 0))
         .group_by("annee")
         .agg(pl.col("egid").n_unique().alias("n_egids_with_sre"))
         .filter(pl.col("n_egids_with_sre") == n_egids_sre)
