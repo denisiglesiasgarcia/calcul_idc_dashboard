@@ -1,13 +1,14 @@
 # sections/helpers/save_excel_streamlit.py
 
-import pandas as pd
-import numpy as np
-from io import BytesIO
-import streamlit as st
-from typing import Union, Dict, Any, Optional
-from datetime import datetime
 import logging
 import traceback
+from datetime import datetime
+from io import BytesIO
+from typing import Any
+
+import numpy as np
+import pandas as pd
+import streamlit as st
 
 # Configure logging with timestamp
 logging.basicConfig(
@@ -19,13 +20,13 @@ logger = logging.getLogger(__name__)
 class ExcelExportError(Exception):
     """Custom exception for Excel export errors with detailed messaging"""
 
-    def __init__(self, message: str, original_error: Optional[Exception] = None):
+    def __init__(self, message: str, original_error: Exception | None = None):
         self.message = message
         self.original_error = original_error
         super().__init__(self.message)
 
 
-def validate_data(data: Union[pd.DataFrame, Dict[str, Any]]) -> pd.DataFrame:
+def validate_data(data: pd.DataFrame | dict[str, Any]) -> pd.DataFrame:
     """
     Validate and convert input data to DataFrame with comprehensive error checking.
 
@@ -98,10 +99,12 @@ def validate_data(data: Union[pd.DataFrame, Dict[str, Any]]) -> pd.DataFrame:
     except ExcelExportError:
         raise
     except Exception as e:
-        raise ExcelExportError(f"Data validation failed: {str(e)}", original_error=e)
+        raise ExcelExportError(
+            f"Data validation failed: {str(e)}", original_error=e
+        ) from e
 
 
-def convert_df_to_excel(data: Union[pd.DataFrame, Dict[str, Any]]) -> bytes:
+def convert_df_to_excel(data: pd.DataFrame | dict[str, Any]) -> bytes:
     """
     Convert data to Excel bytes with enhanced error handling and formatting.
 
@@ -161,14 +164,16 @@ def convert_df_to_excel(data: Union[pd.DataFrame, Dict[str, Any]]) -> bytes:
     except ExcelExportError:
         raise
     except Exception as e:
-        raise ExcelExportError(f"Excel conversion failed: {str(e)}", original_error=e)
+        raise ExcelExportError(
+            f"Excel conversion failed: {str(e)}", original_error=e
+        ) from e
     finally:
         if output:
             output.close()
 
 
 def display_dataframe_with_excel_download(
-    data: Union[pd.DataFrame, Dict[str, Any]], filename: str = "data.xlsx"
+    data: pd.DataFrame | dict[str, Any], filename: str = "data.xlsx"
 ) -> None:
     """
     Display data in Streamlit with Excel download button and error handling.
