@@ -90,6 +90,10 @@ def create_barplot(
                 (pl.col("adresse") + " - " + pl.col("egid").cast(pl.Utf8)).alias(
                     "adresse_egid"
                 ),
+                pl.when(pl.col("indice") > 0)
+                .then(pl.col("indice").cast(pl.Int64).cast(pl.Utf8))
+                .otherwise(pl.lit(""))
+                .alias("text"),
                 # Agent 1
                 pl.when(pl.col("agent_energetique_1").is_not_null())
                 .then(
@@ -142,34 +146,6 @@ def create_barplot(
                 .alias("debut"),
                 pl.col("date_fin_periode").cast(pl.Utf8).str.slice(0, 10).alias("fin"),
             ]
-        )
-        # Second pass: build bar label — references agent labels computed above
-        .with_columns(
-            pl.when(pl.col("indice") > 0)
-            .then(
-                pl.col("indice").cast(pl.Int64).cast(pl.Utf8)
-                + " MJ/m²"
-                + "<br>SRE: "
-                + pl.col("sre").cast(pl.Int64).cast(pl.Utf8)
-                + " m²"
-                + "<br>Énergie: "
-                + (pl.col("indice").cast(pl.Float64) * pl.col("sre").cast(pl.Float64))
-                .round(0)
-                .cast(pl.Int64)
-                .cast(pl.Utf8)
-                + " MJ"
-                + pl.when(pl.col("agent_1_label") != "")
-                .then(pl.lit("<br>") + pl.col("agent_1_label"))
-                .otherwise(pl.lit(""))
-                + pl.when(pl.col("agent_2_label") != "")
-                .then(pl.lit("<br>") + pl.col("agent_2_label"))
-                .otherwise(pl.lit(""))
-                + pl.when(pl.col("agent_3_label") != "")
-                .then(pl.lit("<br>") + pl.col("agent_3_label"))
-                .otherwise(pl.lit(""))
-            )
-            .otherwise(pl.lit(""))
-            .alias("text")
         )
     )
 
@@ -229,7 +205,6 @@ def create_barplot(
     fig.update_traces(
         textposition="outside",
         texttemplate="%{text}",
-        textfont=dict(size=10),
         cliponaxis=False,
         hovertemplate=(
             "<b>%{customdata[0]}</b><br>"
@@ -378,7 +353,7 @@ def create_barplot(
             annotation_font_color="red",
         )
 
-    y_max = max(df_full["indice"].max() or 0, seuil or 0) * 2.0
+    y_max = max(df_full["indice"].max() or 0, seuil or 0) * 1.2
 
     fig.update_layout(
         xaxis_title="Année",
