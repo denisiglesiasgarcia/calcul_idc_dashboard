@@ -9,6 +9,7 @@ from datetime import datetime
 
 import polars as pl
 import psycopg2
+import psycopg2.pool
 from psycopg2.extras import execute_values
 import requests
 import streamlit as st
@@ -19,22 +20,36 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def _get_conn(statement_timeout_ms: int = 30_000):
-    """Open a psycopg2 connection using Streamlit secrets.
-
-    statement_timeout_ms: per-connection timeout in ms.
-    Use a higher value for bulk write operations.
-    """
+@st.cache_resource
+def _get_pool():
+    """Create a thread-safe connection pool shared across all reruns."""
     s = st.secrets["supabase"]
-    return psycopg2.connect(
+    return psycopg2.pool.ThreadedConnectionPool(
+        minconn=1,
+        maxconn=5,
         host=s["host"],
         port=s["port"],
         dbname=s["dbname"],
         user=s["user"],
         password=s["password"],
         sslmode="require",
-        options=f"-c statement_timeout={statement_timeout_ms}",
+        options="-c statement_timeout=30000",
     )
+
+
+def _get_conn(statement_timeout_ms: int = 30_000):
+    """Get a connection from the pool. Use _put_conn() to return it."""
+    conn = _get_pool().getconn()
+    if statement_timeout_ms != 30_000:
+        with conn.cursor() as cur:
+            cur.execute(f"SET statement_timeout = {statement_timeout_ms}")
+    return conn
+
+
+def _put_conn(conn, discard: bool = False) -> None:
+    """Return a connection to the pool. Pass discard=True when a non-default
+    statement_timeout was set, so the next caller gets a clean connection."""
+    _get_pool().putconn(conn, close=discard)
 
 
 def _execute(conn, sql: str, params=None) -> None:
@@ -69,7 +84,7 @@ def init_history_table() -> None:
             ON consultation_history (ts DESC)
         """,
         )
-    conn.close()
+    _put_conn(conn)
 
 
 def init_favorites_table() -> None:
@@ -85,7 +100,7 @@ def init_favorites_table() -> None:
             )
         """,
         )
-    conn.close()
+    _put_conn(conn)
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +135,7 @@ def init_autorizations_table() -> None:
             conn,
             "CREATE INDEX IF NOT EXISTS idx_autorizations_egid ON autorizations (egid)",
         )
-    conn.close()
+    _put_conn(conn)
 
 
 def refresh_autorizations_db(
@@ -171,6 +186,8 @@ def refresh_autorizations_db(
         for r in records
     ]
 
+    # Use a long timeout for the bulk write; discard connection afterwards so
+    # the pool doesn't inherit the extended statement_timeout.
     conn = _get_conn(statement_timeout_ms=300_000)
     cur = conn.cursor()
 
@@ -198,13 +215,13 @@ def refresh_autorizations_db(
         )
 
     cur.close()
-    conn.close()
+    _put_conn(conn, discard=True)
     _progress(1.0)
     _status(f"Terminé — {len(rows):,} dossiers d'autorisation enregistrés.")
     return len(rows)
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=600)
 def load_autorizations_by_egids(egids: tuple) -> list[dict]:
     """Load authorization records for a set of EGIDs, most recent first."""
     if not egids:
@@ -225,7 +242,7 @@ def load_autorizations_by_egids(egids: tuple) -> list[dict]:
     )
     rows = cur.fetchall()
     cur.close()
-    conn.close()
+    _put_conn(conn)
     cols = [
         "egid",
         "commune",
@@ -356,6 +373,7 @@ def refresh_adresses_db(
     unique_records = df.rows()
 
     # Step 3: TRUNCATE puis INSERT chunk par chunk, chacun dans sa propre transaction
+    # Use a long timeout for the bulk write; discard connection afterwards.
     conn = _get_conn(statement_timeout_ms=300_000)
     cur = conn.cursor()
 
@@ -379,7 +397,7 @@ def refresh_adresses_db(
         )
 
     cur.close()
-    conn.close()
+    _put_conn(conn, discard=True)
 
     _progress(1.0)
     _status(f"Terminé — {len(unique_records):,} adresses uniques enregistrées.")
@@ -405,11 +423,11 @@ def save_history_entry(selected_options: list[str]) -> None:
                 (datetime.utcnow().isoformat(), labels_json),
             )
         cur.close()
-    conn.close()
+    _put_conn(conn)
     load_history.clear()
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=120)
 def load_history(n: int = 20) -> list[dict]:
     conn = _get_conn()
     cur = conn.cursor()
@@ -419,7 +437,7 @@ def load_history(n: int = 20) -> list[dict]:
     )
     rows = cur.fetchall()
     cur.close()
-    conn.close()
+    _put_conn(conn)
     return [{"id": r[0], "ts": r[1], "labels": json.loads(r[2])} for r in rows]
 
 
@@ -427,7 +445,7 @@ def delete_history_entry(entry_id: int) -> None:
     conn = _get_conn()
     with conn:
         _execute(conn, "DELETE FROM consultation_history WHERE id = %s", (entry_id,))
-    conn.close()
+    _put_conn(conn)
     load_history.clear()
 
 
@@ -451,17 +469,17 @@ def save_favorite(name: str, labels: list[str]) -> bool:
     except psycopg2.errors.UniqueViolation:
         return False
     finally:
-        conn.close()
+        _put_conn(conn)
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=120)
 def load_favorites() -> list[dict]:
     conn = _get_conn()
     cur = conn.cursor()
     cur.execute("SELECT id, name, labels FROM adresses_favorites ORDER BY name")
     rows = cur.fetchall()
     cur.close()
-    conn.close()
+    _put_conn(conn)
     return [{"id": r[0], "name": r[1], "labels": json.loads(r[2])} for r in rows]
 
 
@@ -469,7 +487,7 @@ def delete_favorite(fav_id: int) -> None:
     conn = _get_conn()
     with conn:
         _execute(conn, "DELETE FROM adresses_favorites WHERE id = %s", (fav_id,))
-    conn.close()
+    _put_conn(conn)
     load_favorites.clear()
 
 
@@ -478,9 +496,13 @@ def delete_favorite(fav_id: int) -> None:
 # ---------------------------------------------------------------------------
 
 
-@st.cache_data
+@st.cache_resource
 def get_all_addresses() -> pl.DataFrame:
-    """Load address/EGID pairs from Supabase, sorted by address."""
+    """Load address/EGID pairs from Supabase, sorted by address.
+
+    Uses cache_resource (shared object, no copy) instead of cache_data
+    because this DataFrame is read-only and can be safely shared across sessions.
+    """
     conn = _get_conn()
     try:
         return pl.read_database(
@@ -496,4 +518,4 @@ def get_all_addresses() -> pl.DataFrame:
             }
         )
     finally:
-        conn.close()
+        _put_conn(conn)
