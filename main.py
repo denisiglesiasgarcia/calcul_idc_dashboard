@@ -414,7 +414,8 @@ try:
             autor_records = load_autorizations_by_egids(egids_int)
             if autor_records:
                 df_autor = pl.DataFrame(autor_records).with_columns(
-                    pl.col("date_depot")
+                    pl
+                    .col("date_depot")
                     .cast(pl.Utf8)
                     .str.slice(0, 10)
                     .alias("date_depot"),
@@ -449,18 +450,16 @@ try:
                     df_autor = df_autor.filter(pl.col("statut").is_in(selected_statuts))
 
                     st.dataframe(
-                        df_autor.select(
-                            [
-                                "date_depot",
-                                "egid",
-                                "id_dossier",
-                                "type_dossier",
-                                "type_operation",
-                                "statut",
-                                "description",
-                                "lien_sad",
-                            ]
-                        ).to_pandas(),
+                        df_autor.select([
+                            "date_depot",
+                            "egid",
+                            "id_dossier",
+                            "type_dossier",
+                            "type_operation",
+                            "statut",
+                            "description",
+                            "lien_sad",
+                        ]),
                         width="stretch",
                         hide_index=True,
                         column_config={
@@ -476,37 +475,6 @@ try:
                             ),
                         },
                     )
-                if selected_statuts:
-                    df_autor = df_autor.filter(pl.col("statut").is_in(selected_statuts))
-
-                st.dataframe(
-                    df_autor.select(
-                        [
-                            "date_depot",
-                            "egid",
-                            "id_dossier",
-                            "type_dossier",
-                            "type_operation",
-                            "statut",
-                            "description",
-                            "lien_sad",
-                        ]
-                    ).to_pandas(),
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "date_depot": st.column_config.TextColumn("Date dépôt"),
-                        "egid": st.column_config.TextColumn("EGID"),
-                        "id_dossier": st.column_config.TextColumn("Dossier"),
-                        "type_dossier": st.column_config.TextColumn("Type"),
-                        "type_operation": st.column_config.TextColumn("Opération"),
-                        "statut": st.column_config.TextColumn("Statut"),
-                        "description": st.column_config.TextColumn("Description"),
-                        "lien_sad": st.column_config.LinkColumn(
-                            "Lien SAD", display_text="Consulter"
-                        ),
-                    },
-                )
                 st.caption(
                     f"{len(df_autor):,} dossier(s) affiché(s) sur \
                     {len(autor_records):,}au total."
