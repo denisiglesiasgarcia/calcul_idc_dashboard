@@ -426,9 +426,7 @@ try:
                         key="autor_filter_operation",
                     )
                 with col_st:
-                    statuts = sorted(
-                        df_autor["statut"].drop_nulls().unique().to_list()
-                    )
+                    statuts = sorted(df_autor["statut"].drop_nulls().unique().to_list())
                     selected_statuts = st.multiselect(
                         "Statut",
                         options=statuts,
@@ -441,9 +439,7 @@ try:
                         pl.col("type_operation").is_in(selected_ops)
                     )
                 if selected_statuts:
-                    df_autor = df_autor.filter(
-                        pl.col("statut").is_in(selected_statuts)
-                    )
+                    df_autor = df_autor.filter(pl.col("statut").is_in(selected_statuts))
 
                 st.dataframe(
                     df_autor.select(
