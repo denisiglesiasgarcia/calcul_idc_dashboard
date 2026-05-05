@@ -15,6 +15,9 @@ from sections.helpers.db import (
     load_favorites,
     delete_favorite,
     get_all_addresses,
+    init_autorizations_table,
+    refresh_autorizations_db,
+    load_autorizations_by_egids,
 )
 from sections.helpers.idc_api import fetch_idc_data
 from sections.helpers.idc_geo import convert_geometry_for_streamlit, show_map
@@ -45,6 +48,7 @@ CURRENT_YEAR = datetime.now().year
 # Init DB au démarrage, session_state uniquement pour le reload sidebar
 init_history_table()
 init_favorites_table()
+init_autorizations_table()
 
 
 if "address_multiselect" not in st.session_state:
@@ -73,28 +77,41 @@ with st.sidebar:
         step=1,
     )
 
-    st.subheader("Base de données adresses")
+    st.subheader("Base de données")
     if st.button("Mise à jour", width="stretch"):
         status_text = st.empty()
         progress_bar = st.progress(0.0)
         try:
-            n = refresh_adresses_db(
+            # Phase 1 — adresses IDC
+            status_text.caption("Phase 1/2 — Adresses IDC...")
+            n_addr = refresh_adresses_db(
                 URL_INDICE_MOYENNES_3_ANS,
                 progress_bar=progress_bar,
                 status_text=status_text,
             )
-            # Clear the single address cache so the multiselect reloads
             get_all_addresses.clear()
+
+            # Phase 2 — dossiers d'autorisation
+            progress_bar.progress(0.0)
+            status_text.caption("Phase 2/2 — Dossiers d'autorisation...")
+            n_autor = refresh_autorizations_db(
+                progress_bar=progress_bar,
+                status_text=status_text,
+            )
+            load_autorizations_by_egids.clear()
+
             progress_bar.empty()
             status_text.empty()
-            st.success(f"{n:,} adresses chargées et enregistrées.")
+            st.success(
+                f"{n_addr:,} adresses · {n_autor:,} dossiers d'autorisation chargés."
+            )
         except Exception as e:
             progress_bar.empty()
             status_text.empty()
             st.error(f"Erreur lors de la mise à jour : {e}")
     st.caption(
-        "Origine données: [SCANE_INDICE_MOYENNES_3_ANS]"
-        "(https://sitg.ge.ch/donnees/scane-indice-moyennes-3-ans)."
+        "Sources : [IDC SCANE](https://sitg.ge.ch/donnees/scane-indice-moyennes-3-ans)"
+        " · [Autorisations SITG](https://sitg.ge.ch/donnees/sit-autor-dossier)."
     )
 
     st.subheader("Favoris")
@@ -386,6 +403,87 @@ try:
         # Données IDC détaillées
         st.subheader("Données IDC")
         show_dataframe(data_df, seuil=seuil, year_range=year_range)
+
+        #######################################################################
+
+        # Dossiers d'autorisation de construire
+        st.subheader("Dossiers d'autorisation")
+        egids_int = tuple(int(e) for e in egids if e and e not in ("N/A", "", None))
+        if egids_int:
+            autor_records = load_autorizations_by_egids(egids_int)
+            if autor_records:
+                df_autor = pl.DataFrame(autor_records).with_columns(
+                    pl.col("date_depot")
+                    .cast(pl.Utf8)
+                    .str.slice(0, 10)
+                    .alias("date_depot"),
+                    pl.col("egid").cast(pl.Utf8),
+                )
+
+                # Filter controls
+                col_op, col_st = st.columns(2)
+                with col_op:
+                    ops = sorted(
+                        df_autor["type_operation"].drop_nulls().unique().to_list()
+                    )
+                    selected_ops = st.multiselect(
+                        "Type d'opération",
+                        options=ops,
+                        default=ops,
+                        key="autor_filter_operation",
+                    )
+                with col_st:
+                    statuts = sorted(df_autor["statut"].drop_nulls().unique().to_list())
+                    selected_statuts = st.multiselect(
+                        "Statut",
+                        options=statuts,
+                        default=statuts,
+                        key="autor_filter_statut",
+                    )
+
+                if selected_ops:
+                    df_autor = df_autor.filter(
+                        pl.col("type_operation").is_in(selected_ops)
+                    )
+                if selected_statuts:
+                    df_autor = df_autor.filter(pl.col("statut").is_in(selected_statuts))
+
+                st.dataframe(
+                    df_autor.select(
+                        [
+                            "date_depot",
+                            "egid",
+                            "id_dossier",
+                            "type_dossier",
+                            "type_operation",
+                            "statut",
+                            "description",
+                            "lien_sad",
+                        ]
+                    ).to_pandas(),
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "date_depot": st.column_config.TextColumn("Date dépôt"),
+                        "egid": st.column_config.TextColumn("EGID"),
+                        "id_dossier": st.column_config.TextColumn("Dossier"),
+                        "type_dossier": st.column_config.TextColumn("Type"),
+                        "type_operation": st.column_config.TextColumn("Opération"),
+                        "statut": st.column_config.TextColumn("Statut"),
+                        "description": st.column_config.TextColumn("Description"),
+                        "lien_sad": st.column_config.LinkColumn(
+                            "Lien SAD", display_text="Consulter"
+                        ),
+                    },
+                )
+                st.caption(
+                    f"{len(df_autor):,} dossier(s) affiché(s) sur {len(autor_records):,} au total."
+                )
+            else:
+                st.info(
+                    "Aucun dossier d'autorisation trouvé pour ces bâtiments. "
+                    "Lancez une mise à jour si la base est vide."
+                )
     else:
         st.warning(
             "Veuillez renseigner une ou plusieurs adresses pour afficher les données IDC."
