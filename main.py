@@ -37,7 +37,7 @@ st.set_page_config(
     },
 )
 
-# ---------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------
 FIELDS = "*"
 URL_INDICE_MOYENNES_3_ANS = (
     "https://vector.sitg.ge.ch/arcgis/rest/services/Hosted/"
@@ -55,9 +55,9 @@ init_autorizations_table()
 if "address_multiselect" not in st.session_state:
     st.session_state["address_multiselect"] = []
 
-# ---------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------
 # Sidebar — analysis parameters
-# ---------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------
 with st.sidebar:
     st.header("Paramètres d'analyse")
 
@@ -201,13 +201,14 @@ with st.sidebar:
                     delete_history_entry(entry["id"])
                     st.rerun()
 
-# ---------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------
 # Main content
-# ---------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------
 st.subheader("Sélection adresse")
 
-# CSS pour améliorer l'affichage des tags (multiselect) — permet à chaque tag de s'afficher
-# en entier sans troncature, même avec du contenu long (ex: "Rue de Rive 10 (1234567)")
+# CSS pour améliorer l'affichage des tags (multiselect) — permet à chaque tag
+# de s'afficher en entier sans troncature, même avec du contenu long
+# (ex: "Rue de Rive 10 (1234567)")
 st.markdown(
     """
     <style>
@@ -221,7 +222,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# st.expander custom CSS pour supprimer les bordures et ombres, mieux intégrer les sections
+# st.expander custom CSS pour supprimer les bordures et ombres, mieux intégrer les
+# sections
 st.markdown(
     """
     <style>
@@ -292,7 +294,8 @@ with col_clear:
         st.session_state["_pending_search_filter"] = ""
         st.rerun()
 
-# Transfer pending selection set by the address importer (runs before widget instantiation)
+# Transfer pending selection set by the address importer
+# (runs before widget instantiation)
 if "_pending_multiselect" in st.session_state:
     st.session_state["address_multiselect"] = st.session_state.pop(
         "_pending_multiselect"
@@ -305,13 +308,14 @@ visible_options = list(dict.fromkeys(current_selection + filtered_options))
 
 selected_options = st.multiselect(
     label="Adresse",
-    options=visible_options,  # ← liste filtrée : la dropdown reste stable lors des clics successifs
+    options=visible_options,  # ← liste filtrée : la dropdown stable si clics successifs
     placeholder="Sélectionner une ou plusieurs adresses...",
     key="address_multiselect",
     label_visibility="collapsed",
 )
 
-# Reverse map: adresse (lowercase) -> display label — pour la recherche insensible à la casse
+# Reverse map: adresse (lowercase) -> display label — pour la recherche
+# insensible à la casse
 adresse_to_display: dict[str, str] = {
     v["adresse"].lower(): k for k, v in options_map.items()
 }
@@ -336,7 +340,8 @@ with st.expander("Charger depuis une liste d'adresses"):
         not_found = {a for a in adresses_input if a.lower() not in adresse_to_display}
 
         if matched:
-            # Use staging key — direct write after widget instantiation raises StreamlitAPIException
+            # Use staging key — direct write after widget instantiation
+            #  raises StreamlitAPIException
             st.session_state["_pending_multiselect"] = matched
             if not_found:
                 st.warning(
@@ -353,7 +358,7 @@ if selected_options:
     st.session_state["data_verif_idc"] = pl.DataFrame(selected_rows)
     save_history_entry(selected_options)
 
-# ---------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------
 try:
     if selected_options and len(st.session_state.get("data_verif_idc", [])) > 0:
         egids = st.session_state["data_verif_idc"]["egid"].to_list()
@@ -500,7 +505,8 @@ try:
                     },
                 )
                 st.caption(
-                    f"{len(df_autor):,} dossier(s) affiché(s) sur {len(autor_records):,} au total."
+                    f"{len(df_autor):,} dossier(s) affiché(s) sur \
+                    {len(autor_records):,}au total."
                 )
             else:
                 st.info(
@@ -509,7 +515,8 @@ try:
                 )
     else:
         st.warning(
-            "Veuillez renseigner une ou plusieurs adresses pour afficher les données IDC."
+            "Veuillez renseigner une ou plusieurs adresses pour afficher \
+                les données IDC."
         )
 except Exception as e:
     st.error(f"Une erreur est survenue lors de l'analyse : {e}")
