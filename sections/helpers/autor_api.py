@@ -26,20 +26,22 @@ URL_BATIMENT_HORSOL = (
     "CAD_BATIMENT_HORSOL/FeatureServer/0/query"
 )
 
-_AUTOR_FIELDS = ",".join([
-    "ID_DOSSIER",
-    "TYPE_DOSSIER",
-    "TYPE_OPERATION",
-    "NOM_DOSSIER",
-    "NO_DOSSIER",
-    "NO_COMPLEMENTAIRE",
-    "STATUT",
-    "DATE_DEPOT",
-    "DESCRIPTION",
-    "OPERATION",
-    "LIEN_SAD",
-    "DATE_MAJ_2",
-])
+_AUTOR_FIELDS = ",".join(
+    [
+        "ID_DOSSIER",
+        "TYPE_DOSSIER",
+        "TYPE_OPERATION",
+        "NOM_DOSSIER",
+        "NO_DOSSIER",
+        "NO_COMPLEMENTAIRE",
+        "STATUT",
+        "DATE_DEPOT",
+        "DESCRIPTION",
+        "OPERATION",
+        "LIEN_SAD",
+        "DATE_MAJ_2",
+    ]
+)
 
 _BATIMENT_FIELDS = "EGID,COMMUNE"
 
@@ -118,7 +120,9 @@ def _fetch_all_features(
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(_fetch_page, url, off, chunk_size, fields, with_geometry): off
+            executor.submit(
+                _fetch_page, url, off, chunk_size, fields, with_geometry
+            ): off
             for off in offsets
         }
         for future in as_completed(futures):
@@ -250,24 +254,24 @@ def fetch_and_join_autorizations(
     # Stage 4: Normalize column names and convert timestamps
     records = []
     for row in gdf_joined.to_dict(orient="records"):
-        records.append({
-            "egid": row.get("EGID"),
-            "commune": row.get("COMMUNE"),
-            "id_dossier": row.get("ID_DOSSIER"),
-            "type_dossier": row.get("TYPE_DOSSIER"),
-            "type_operation": row.get("TYPE_OPERATION"),
-            "nom_dossier": row.get("NOM_DOSSIER"),
-            "statut": row.get("STATUT"),
-            "date_depot": _ms_to_iso(row.get("DATE_DEPOT")),
-            "description": row.get("DESCRIPTION"),
-            "operation": row.get("OPERATION"),
-            "lien_sad": row.get("LIEN_SAD"),
-            "date_maj": _ms_to_iso(row.get("DATE_MAJ_2")),
-        })
+        records.append(
+            {
+                "egid": row.get("EGID"),
+                "commune": row.get("COMMUNE"),
+                "id_dossier": row.get("ID_DOSSIER"),
+                "type_dossier": row.get("TYPE_DOSSIER"),
+                "type_operation": row.get("TYPE_OPERATION"),
+                "nom_dossier": row.get("NOM_DOSSIER"),
+                "statut": row.get("STATUT"),
+                "date_depot": _ms_to_iso(row.get("DATE_DEPOT")),
+                "description": row.get("DESCRIPTION"),
+                "operation": row.get("OPERATION"),
+                "lien_sad": row.get("LIEN_SAD"),
+                "date_maj": _ms_to_iso(row.get("DATE_MAJ_2")),
+            }
+        )
 
     if status_cb:
-        status_cb(
-            f"Jointure terminée — {len(records):,} dossiers liés à un bâtiment"
-        )
+        status_cb(f"Jointure terminée — {len(records):,} dossiers liés à un bâtiment")
 
     return records
