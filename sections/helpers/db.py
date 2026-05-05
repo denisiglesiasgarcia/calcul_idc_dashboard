@@ -13,6 +13,8 @@ from psycopg2.extras import execute_values
 import requests
 import streamlit as st
 
+from sections.helpers.autor_api import fetch_and_join_autorizations
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -84,6 +86,152 @@ def init_favorites_table() -> None:
         """,
         )
     conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Authorization dossiers cache
+# ---------------------------------------------------------------------------
+
+
+def init_autorizations_table() -> None:
+    conn = _get_conn()
+    with conn:
+        _execute(
+            conn,
+            """
+            CREATE TABLE IF NOT EXISTS autorizations (
+                id             SERIAL PRIMARY KEY,
+                egid           BIGINT NOT NULL,
+                commune        TEXT,
+                id_dossier     TEXT,
+                type_dossier   TEXT,
+                type_operation TEXT,
+                nom_dossier    TEXT,
+                statut         TEXT,
+                date_depot     TIMESTAMPTZ,
+                description    TEXT,
+                operation      TEXT,
+                lien_sad       TEXT,
+                date_maj       TIMESTAMPTZ
+            )
+            """,
+        )
+        _execute(
+            conn,
+            "CREATE INDEX IF NOT EXISTS idx_autorizations_egid ON autorizations (egid)",
+        )
+    conn.close()
+
+
+def refresh_autorizations_db(
+    progress_bar=None,
+    status_text=None,
+) -> int:
+    """
+    Full ETL: fetch SIT_AUTOR_DOSSIER + CAD_BATIMENT_HORSOL from SITG,
+    spatial-join to get EGID per dossier, then truncate/insert into Supabase.
+    Returns the number of records inserted.
+    """
+
+    def _status(msg: str) -> None:
+        if status_text is not None:
+            status_text.caption(msg)
+        logger.info(msg)
+
+    def _progress(value: float) -> None:
+        if progress_bar is not None:
+            progress_bar.progress(value)
+
+    records = fetch_and_join_autorizations(
+        progress_cb=lambda f: _progress(f * 0.9),
+        status_cb=_status,
+    )
+
+    if not records:
+        _status("Aucun dossier d'autorisation récupéré.")
+        return 0
+
+    _status(f"Écriture de {len(records):,} dossiers en base...")
+
+    rows = [
+        (
+            r["egid"],
+            r["commune"],
+            r["id_dossier"],
+            r["type_dossier"],
+            r["type_operation"],
+            r["nom_dossier"],
+            r["statut"],
+            r["date_depot"],
+            r["description"],
+            r["operation"],
+            r["lien_sad"],
+            r["date_maj"],
+        )
+        for r in records
+    ]
+
+    conn = _get_conn(statement_timeout_ms=300_000)
+    cur = conn.cursor()
+
+    cur.execute("TRUNCATE TABLE autorizations")
+    conn.commit()
+
+    chunk = 1000
+    total_chunks = (len(rows) + chunk - 1) // chunk
+    for idx, i in enumerate(range(0, len(rows), chunk)):
+        execute_values(
+            cur,
+            """
+            INSERT INTO autorizations
+                (egid, commune, id_dossier, type_dossier, type_operation,
+                 nom_dossier, statut, date_depot, description, operation,
+                 lien_sad, date_maj)
+            VALUES %s
+            """,
+            rows[i : i + chunk],
+        )
+        conn.commit()
+        _progress(0.9 + ((idx + 1) / total_chunks) * 0.1)
+        _status(
+            f"Écriture en base : {min(i + chunk, len(rows)):,} / {len(rows):,} dossiers"
+        )
+
+    cur.close()
+    conn.close()
+    _progress(1.0)
+    _status(f"Terminé — {len(rows):,} dossiers d'autorisation enregistrés.")
+    return len(rows)
+
+
+@st.cache_data(ttl=60)
+def load_autorizations_by_egids(egids: tuple) -> list[dict]:
+    """Load authorization records for a set of EGIDs, most recent first."""
+    if not egids:
+        return []
+    conn = _get_conn()
+    cur = conn.cursor()
+    placeholders = ",".join(["%s"] * len(egids))
+    cur.execute(
+        f"""
+        SELECT egid, commune, id_dossier, type_dossier, type_operation,
+               nom_dossier, statut, date_depot, description, operation,
+               lien_sad, date_maj
+        FROM autorizations
+        WHERE egid IN ({placeholders})
+        ORDER BY date_depot DESC NULLS LAST
+        """,
+        list(egids),
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    cols = [
+        "egid", "commune", "id_dossier", "type_dossier", "type_operation",
+        "nom_dossier", "statut", "date_depot", "description", "operation",
+        "lien_sad", "date_maj",
+    ]
+    return [dict(zip(cols, r)) for r in rows]
 
 
 # ---------------------------------------------------------------------------
