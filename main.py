@@ -408,14 +408,15 @@ try:
 
         # Dossiers d'autorisation de construire
         st.subheader("Dossiers d'autorisation")
-        egids_int = tuple(
-            int(e) for e in egids if e and e not in ("N/A", "", None)
-        )
+        egids_int = tuple(int(e) for e in egids if e and e not in ("N/A", "", None))
         if egids_int:
             autor_records = load_autorizations_by_egids(egids_int)
             if autor_records:
                 df_autor = pl.DataFrame(autor_records).with_columns(
-                    pl.col("date_depot").cast(pl.Utf8).str.slice(0, 10).alias("date_depot"),
+                    pl.col("date_depot")
+                    .cast(pl.Utf8)
+                    .str.slice(0, 10)
+                    .alias("date_depot"),
                     pl.col("egid").cast(pl.Utf8),
                 )
 
@@ -426,15 +427,17 @@ try:
                         df_autor["type_operation"].drop_nulls().unique().to_list()
                     )
                     selected_ops = st.multiselect(
-                        "Type d'opération", options=ops, default=ops,
+                        "Type d'opération",
+                        options=ops,
+                        default=ops,
                         key="autor_filter_operation",
                     )
                 with col_st:
-                    statuts = sorted(
-                        df_autor["statut"].drop_nulls().unique().to_list()
-                    )
+                    statuts = sorted(df_autor["statut"].drop_nulls().unique().to_list())
                     selected_statuts = st.multiselect(
-                        "Statut", options=statuts, default=statuts,
+                        "Statut",
+                        options=statuts,
+                        default=statuts,
                         key="autor_filter_statut",
                     )
 
@@ -443,25 +446,31 @@ try:
                         pl.col("type_operation").is_in(selected_ops)
                     )
                 if selected_statuts:
-                    df_autor = df_autor.filter(
-                        pl.col("statut").is_in(selected_statuts)
-                    )
+                    df_autor = df_autor.filter(pl.col("statut").is_in(selected_statuts))
 
                 st.dataframe(
-                    df_autor.select([
-                        "date_depot", "egid", "id_dossier", "type_dossier",
-                        "type_operation", "statut", "description", "lien_sad",
-                    ]).to_pandas(),
+                    df_autor.select(
+                        [
+                            "date_depot",
+                            "egid",
+                            "id_dossier",
+                            "type_dossier",
+                            "type_operation",
+                            "statut",
+                            "description",
+                            "lien_sad",
+                        ]
+                    ).to_pandas(),
                     use_container_width=True,
                     hide_index=True,
                     column_config={
-                        "date_depot":     st.column_config.TextColumn("Date dépôt"),
-                        "egid":           st.column_config.TextColumn("EGID"),
-                        "id_dossier":     st.column_config.TextColumn("Dossier"),
-                        "type_dossier":   st.column_config.TextColumn("Type"),
+                        "date_depot": st.column_config.TextColumn("Date dépôt"),
+                        "egid": st.column_config.TextColumn("EGID"),
+                        "id_dossier": st.column_config.TextColumn("Dossier"),
+                        "type_dossier": st.column_config.TextColumn("Type"),
                         "type_operation": st.column_config.TextColumn("Opération"),
-                        "statut":         st.column_config.TextColumn("Statut"),
-                        "description":    st.column_config.TextColumn("Description"),
+                        "statut": st.column_config.TextColumn("Statut"),
+                        "description": st.column_config.TextColumn("Description"),
                         "lien_sad": st.column_config.LinkColumn(
                             "Lien SAD", display_text="Consulter"
                         ),
