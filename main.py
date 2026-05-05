@@ -388,11 +388,16 @@ try:
 
         st.divider()
 
+        # Load autorization records once here so they can feed both the KPI
+        # row and the detailed table below without a second DB round-trip.
+        egids_int = tuple(int(e) for e in egids if e and e not in ("N/A", "", None))
+        autor_records = load_autorizations_by_egids(egids_int) if egids_int else []
+
         # IDC sections — year_range-dependent, isolated so slider errors don't
         # prevent the autorizations section below from rendering.
         try:
             st.subheader("Chiffres-clé")
-            show_kpis(data_df, seuil=seuil, year_range=year_range)
+            show_kpis(data_df, seuil=seuil, year_range=year_range, autor_records=autor_records)
 
             st.subheader("Plan de situation")
             with st.expander("Afficher la carte", expanded=True):
@@ -413,9 +418,7 @@ try:
         # Dossiers d'autorisation — independent of year_range slider
         st.divider()
         st.subheader("Dossiers d'autorisation")
-        egids_int = tuple(int(e) for e in egids if e and e not in ("N/A", "", None))
         if egids_int:
-            autor_records = load_autorizations_by_egids(egids_int)
             if autor_records:
                 df_autor = pl.DataFrame(autor_records).with_columns(
                     pl.col("date_depot")
