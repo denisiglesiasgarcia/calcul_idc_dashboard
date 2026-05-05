@@ -480,7 +480,10 @@ def show_sre_table(
 
 
 def show_kpis(
-    data_df: list[dict], seuil: int = 450, year_range: tuple[int, int] | None = None
+    data_df: list[dict],
+    seuil: int = 450,
+    year_range: tuple[int, int] | None = None,
+    autor_records: list[dict] | None = None,
 ) -> None:
 
     df = pl.from_dicts(data_df).with_columns(
@@ -727,3 +730,23 @@ def show_kpis(
                 "la première et la dernière année de la période sont utilisées."
             ),
         )
+
+    # ── Ligne 2 : Dossiers d'autorisation ─────────────────────────────────────
+    if autor_records is not None:
+        n_autor_total = len(autor_records)
+        n_agr = sum(
+            1 for r in autor_records if r.get("type_operation") == "AGR"
+        )
+        col_a1, col_a2, *_ = st.columns(6)
+        with col_a1:
+            st.metric(
+                label="Dossiers d'autorisation",
+                value=str(n_autor_total) if n_autor_total > 0 else "Aucun",
+                help="Nombre total de dossiers d'autorisation liés aux bâtiments sélectionnés.",
+            )
+        with col_a2:
+            st.metric(
+                label='Opérations "AGR"',
+                value=str(n_agr) if n_agr > 0 else "Aucune",
+                help='Dossiers dont le type d\'opération est "AGR".',
+            )
