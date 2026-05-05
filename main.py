@@ -408,13 +408,15 @@ try:
         #######################################################################
 
         # Dossiers d'autorisation — independent of year_range slider
+        st.divider()
         st.subheader("Dossiers d'autorisation")
         egids_int = tuple(int(e) for e in egids if e and e not in ("N/A", "", None))
         if egids_int:
             autor_records = load_autorizations_by_egids(egids_int)
             if autor_records:
                 df_autor = pl.DataFrame(autor_records).with_columns(
-                    pl.col("date_depot")
+                    pl
+                    .col("date_depot")
                     .cast(pl.Utf8)
                     .str.slice(0, 10)
                     .alias("date_depot"),
@@ -449,18 +451,16 @@ try:
                     df_autor = df_autor.filter(pl.col("statut").is_in(selected_statuts))
 
                     st.dataframe(
-                        df_autor.select(
-                            [
-                                "date_depot",
-                                "egid",
-                                "id_dossier",
-                                "type_dossier",
-                                "type_operation",
-                                "statut",
-                                "description",
-                                "lien_sad",
-                            ]
-                        ),
+                        df_autor.select([
+                            "date_depot",
+                            "egid",
+                            "id_dossier",
+                            "type_dossier",
+                            "type_operation",
+                            "statut",
+                            "description",
+                            "lien_sad",
+                        ]),
                         width="stretch",
                         hide_index=True,
                         column_config={
