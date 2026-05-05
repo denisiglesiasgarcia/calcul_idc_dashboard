@@ -324,7 +324,7 @@ with st.expander("Charger depuis une liste d'adresses"):
         placeholder="Ex :\nRue de Rive 10\nRue du Rhône 5",
         key="adresse_import_textarea",
     )
-    if st.button("Charger", key="btn_load_adresses", use_container_width=False):
+    if st.button("Charger", key="btn_load_adresses", width="content"):
         tokens = adresse_raw.splitlines()
         adresses_input = {t.strip() for t in tokens if t.strip()}
 
@@ -417,7 +417,6 @@ try:
                     pl.col("egid").cast(pl.Utf8),
                 )
 
-                # Filter controls
                 col_op, col_st = st.columns(2)
                 with col_op:
                     ops = sorted(
@@ -438,36 +437,12 @@ try:
                         key="autor_filter_statut",
                     )
 
-                    col_op, col_st = st.columns(2)
-                    with col_op:
-                        ops = sorted(
-                            df_autor["type_operation"].drop_nulls().unique().to_list()
-                        )
-                        selected_ops = st.multiselect(
-                            "Type d'opération",
-                            options=ops,
-                            default=ops,
-                            key="autor_filter_operation",
-                        )
-                    with col_st:
-                        statuts = sorted(
-                            df_autor["statut"].drop_nulls().unique().to_list()
-                        )
-                        selected_statuts = st.multiselect(
-                            "Statut",
-                            options=statuts,
-                            default=statuts,
-                            key="autor_filter_statut",
-                        )
-
-                    if selected_ops:
-                        df_autor = df_autor.filter(
-                            pl.col("type_operation").is_in(selected_ops)
-                        )
-                    if selected_statuts:
-                        df_autor = df_autor.filter(
-                            pl.col("statut").is_in(selected_statuts)
-                        )
+                if selected_ops:
+                    df_autor = df_autor.filter(
+                        pl.col("type_operation").is_in(selected_ops)
+                    )
+                if selected_statuts:
+                    df_autor = df_autor.filter(pl.col("statut").is_in(selected_statuts))
 
                     st.dataframe(
                         df_autor.select([
