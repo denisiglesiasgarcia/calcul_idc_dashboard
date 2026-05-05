@@ -90,6 +90,10 @@ def create_barplot(
                 (pl.col("adresse") + " - " + pl.col("egid").cast(pl.Utf8)).alias(
                     "adresse_egid"
                 ),
+                pl.when(pl.col("indice") > 0)
+                .then(pl.col("indice").cast(pl.Int64).cast(pl.Utf8))
+                .otherwise(pl.lit(""))
+                .alias("text"),
                 # Agent 1
                 pl.when(pl.col("agent_energetique_1").is_not_null())
                 .then(
@@ -142,34 +146,6 @@ def create_barplot(
                 .alias("debut"),
                 pl.col("date_fin_periode").cast(pl.Utf8).str.slice(0, 10).alias("fin"),
             ]
-        )
-        # Second pass: build bar label — references agent labels computed above
-        .with_columns(
-            pl.when(pl.col("indice") > 0)
-            .then(
-                pl.col("indice").cast(pl.Int64).cast(pl.Utf8)
-                + " MJ/m²"
-                + "<br>SRE: "
-                + pl.col("sre").cast(pl.Int64).cast(pl.Utf8)
-                + " m²"
-                + "<br>Énergie: "
-                + (pl.col("indice").cast(pl.Float64) * pl.col("sre").cast(pl.Float64))
-                .round(0)
-                .cast(pl.Int64)
-                .cast(pl.Utf8)
-                + " MJ"
-                + pl.when(pl.col("agent_1_label") != "")
-                .then(pl.lit("<br>") + pl.col("agent_1_label"))
-                .otherwise(pl.lit(""))
-                + pl.when(pl.col("agent_2_label") != "")
-                .then(pl.lit("<br>") + pl.col("agent_2_label"))
-                .otherwise(pl.lit(""))
-                + pl.when(pl.col("agent_3_label") != "")
-                .then(pl.lit("<br>") + pl.col("agent_3_label"))
-                .otherwise(pl.lit(""))
-            )
-            .otherwise(pl.lit(""))
-            .alias("text")
         )
     )
 
@@ -229,7 +205,6 @@ def create_barplot(
     fig.update_traces(
         textposition="outside",
         texttemplate="%{text}",
-        textfont=dict(size=10),
         cliponaxis=False,
         hovertemplate=(
             "<b>%{customdata[0]}</b><br>"
@@ -294,7 +269,7 @@ def create_barplot(
                 .round(0)
                 .alias("indice_pondere")
             )
-            .drop(["_indice_x_sre", "_sre_total"])
+            .rename({"_indice_x_sre": "energie_totale", "_sre_total": "sre_total"})
             .sort("annee")
             .with_columns(
                 pl.col("indice_pondere")
@@ -323,16 +298,30 @@ def create_barplot(
                 .alias("annees_moy3_label")
             )
             .drop(["_y2", "_y1"])
+            # Labels shown on chart markers
+            .with_columns(
+                (
+                    pl.col("indice_pondere").cast(pl.Int64).cast(pl.Utf8)
+                    + " MJ/m²<br>SRE: "
+                    + pl.col("sre_total").cast(pl.Int64).cast(pl.Utf8)
+                    + " m²<br>Énergie: "
+                    + pl.col("energie_totale").round(0).cast(pl.Int64).cast(pl.Utf8)
+                    + " MJ"
+                ).alias("label_pondere")
+            )
         )
 
         fig.add_trace(
             go.Scatter(
                 x=df_pondere["annee"].cast(pl.Utf8).to_list(),
                 y=df_pondere["indice_pondere"].to_list(),
-                mode="lines+markers",
+                mode="lines+markers+text",
                 name="IDC pondéré ∑(SRE x IDC)/∑SRE",
                 line=dict(dash="dash", color="black", width=1),
                 marker=dict(size=6, symbol="diamond", color="black"),
+                text=df_pondere["label_pondere"].to_list(),
+                textposition="top center",
+                textfont=dict(size=10, color="black"),
                 showlegend=True,
                 hovertemplate=(
                     "<b>IDC pondéré SRE</b><br>"
@@ -350,10 +339,19 @@ def create_barplot(
                 go.Scatter(
                     x=df_moy3_pondere["annee"].cast(pl.Utf8).to_list(),
                     y=df_moy3_pondere["indice_pondere_moy3"].to_list(),
-                    mode="lines+markers",
+                    mode="lines+markers+text",
                     name="Moy3 pondérée ∑(SRE x IDC)/∑SRE",
                     line=dict(dash="dot", color="grey", width=1),
                     marker=dict(size=5, symbol="diamond", color="grey"),
+                    text=(
+                        df_moy3_pondere["indice_pondere_moy3"]
+                        .cast(pl.Int64)
+                        .cast(pl.Utf8)
+                        + " MJ/m²<br>"
+                        + df_moy3_pondere["annees_moy3_label"].fill_null("")
+                    ).to_list(),
+                    textposition="top center",
+                    textfont=dict(size=10, color="grey"),
                     showlegend=True,
                     customdata=df_moy3_pondere["annees_moy3_label"].to_list(),
                     hovertemplate=(
@@ -378,7 +376,7 @@ def create_barplot(
             annotation_font_color="red",
         )
 
-    y_max = max(df_full["indice"].max() or 0, seuil or 0) * 2.0
+    y_max = max(df_full["indice"].max() or 0, seuil or 0) * 1.5
 
     fig.update_layout(
         xaxis_title="Année",
