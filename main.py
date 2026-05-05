@@ -397,7 +397,9 @@ try:
         # prevent the autorizations section below from rendering.
         try:
             st.subheader("Chiffres-clé")
-            show_kpis(data_df, seuil=seuil, year_range=year_range, autor_records=autor_records)
+            show_kpis(
+                data_df, seuil=seuil, year_range=year_range, autor_records=autor_records
+            )
 
             st.subheader("Plan de situation")
             with st.expander("Afficher la carte", expanded=True):
