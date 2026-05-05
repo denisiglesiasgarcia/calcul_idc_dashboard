@@ -376,105 +376,101 @@ try:
         if data_geometry and data_df:
             geojson_data, centroid = convert_geometry_for_streamlit(data_geometry)
 
-        #######################################################################
         st.divider()
 
-        # Chiffres-clé
-        st.subheader("Chiffres-clé")
-        show_kpis(data_df, seuil=seuil, year_range=year_range)
+        # IDC sections — year_range-dependent, isolated so slider errors don't
+        # prevent the autorizations section below from rendering.
+        try:
+            st.subheader("Chiffres-clé")
+            show_kpis(data_df, seuil=seuil, year_range=year_range)
+
+            st.subheader("Plan de situation")
+            with st.expander("Afficher la carte", expanded=True):
+                show_map(geojson_data, centroid)
+
+            st.subheader("Historique IDC")
+            adresses_titre = st.session_state["data_verif_idc"]["adresse"].to_list()
+            title = ", ".join(adresses_titre)
+            create_barplot(data_df, title, seuil=seuil, year_range=year_range)
+
+            st.subheader("Données IDC")
+            show_dataframe(data_df, seuil=seuil, year_range=year_range)
+        except Exception as e:
+            st.error(f"Erreur lors de l'affichage IDC : {e}")
 
         #######################################################################
 
-        # Map
-        st.subheader("Plan de situation")
-        with st.expander("Afficher la carte", expanded=True):
-            show_map(geojson_data, centroid)
-
-        #######################################################################
-
-        # Barplot
-        st.subheader("Historique IDC")
-        adresses_titre = st.session_state["data_verif_idc"]["adresse"].to_list()
-        title = ", ".join(adresses_titre)
-        create_barplot(data_df, title, seuil=seuil, year_range=year_range)
-
-        #######################################################################
-
-        # Données IDC détaillées
-        st.subheader("Données IDC")
-        show_dataframe(data_df, seuil=seuil, year_range=year_range)
-
-        #######################################################################
-
-        # Dossiers d'autorisation de construire
+        # Dossiers d'autorisation — independent of year_range slider
         st.subheader("Dossiers d'autorisation")
-        egids_int = tuple(
-            int(e) for e in egids if e and e not in ("N/A", "", None)
-        )
-        if egids_int:
-            autor_records = load_autorizations_by_egids(egids_int)
-            if autor_records:
-                df_autor = pl.DataFrame(autor_records).with_columns(
-                    pl.col("date_depot").cast(pl.Utf8).str.slice(0, 10).alias("date_depot"),
-                    pl.col("egid").cast(pl.Utf8),
-                )
-
-                # Filter controls
-                col_op, col_st = st.columns(2)
-                with col_op:
-                    ops = sorted(
-                        df_autor["type_operation"].drop_nulls().unique().to_list()
-                    )
-                    selected_ops = st.multiselect(
-                        "Type d'opération", options=ops, default=ops,
-                        key="autor_filter_operation",
-                    )
-                with col_st:
-                    statuts = sorted(
-                        df_autor["statut"].drop_nulls().unique().to_list()
-                    )
-                    selected_statuts = st.multiselect(
-                        "Statut", options=statuts, default=statuts,
-                        key="autor_filter_statut",
+        try:
+            egids_int = tuple(
+                int(e) for e in egids if e and e not in ("N/A", "", None)
+            )
+            if egids_int:
+                autor_records = load_autorizations_by_egids(egids_int)
+                if autor_records:
+                    df_autor = pl.DataFrame(autor_records).with_columns(
+                        pl.col("date_depot").cast(pl.Utf8).str.slice(0, 10).alias("date_depot"),
+                        pl.col("egid").cast(pl.Utf8),
                     )
 
-                if selected_ops:
-                    df_autor = df_autor.filter(
-                        pl.col("type_operation").is_in(selected_ops)
-                    )
-                if selected_statuts:
-                    df_autor = df_autor.filter(
-                        pl.col("statut").is_in(selected_statuts)
-                    )
+                    col_op, col_st = st.columns(2)
+                    with col_op:
+                        ops = sorted(
+                            df_autor["type_operation"].drop_nulls().unique().to_list()
+                        )
+                        selected_ops = st.multiselect(
+                            "Type d'opération", options=ops, default=ops,
+                            key="autor_filter_operation",
+                        )
+                    with col_st:
+                        statuts = sorted(
+                            df_autor["statut"].drop_nulls().unique().to_list()
+                        )
+                        selected_statuts = st.multiselect(
+                            "Statut", options=statuts, default=statuts,
+                            key="autor_filter_statut",
+                        )
 
-                st.dataframe(
-                    df_autor.select([
-                        "date_depot", "egid", "id_dossier", "type_dossier",
-                        "type_operation", "statut", "description", "lien_sad",
-                    ]).to_pandas(),
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "date_depot":     st.column_config.TextColumn("Date dépôt"),
-                        "egid":           st.column_config.TextColumn("EGID"),
-                        "id_dossier":     st.column_config.TextColumn("Dossier"),
-                        "type_dossier":   st.column_config.TextColumn("Type"),
-                        "type_operation": st.column_config.TextColumn("Opération"),
-                        "statut":         st.column_config.TextColumn("Statut"),
-                        "description":    st.column_config.TextColumn("Description"),
-                        "lien_sad": st.column_config.LinkColumn(
-                            "Lien SAD", display_text="Consulter"
-                        ),
-                    },
-                )
-                st.caption(
-                    f"{len(df_autor):,} dossier(s) affiché(s) sur {len(autor_records):,} au total."
-                )
-            else:
-                st.info(
-                    "Aucun dossier d'autorisation trouvé pour ces bâtiments. "
-                    "Lancez une mise à jour si la base est vide."
-                )
+                    if selected_ops:
+                        df_autor = df_autor.filter(
+                            pl.col("type_operation").is_in(selected_ops)
+                        )
+                    if selected_statuts:
+                        df_autor = df_autor.filter(
+                            pl.col("statut").is_in(selected_statuts)
+                        )
+
+                    st.dataframe(
+                        df_autor.select([
+                            "date_depot", "egid", "id_dossier", "type_dossier",
+                            "type_operation", "statut", "description", "lien_sad",
+                        ]).to_pandas(),
+                        width="stretch",
+                        hide_index=True,
+                        column_config={
+                            "date_depot":     st.column_config.TextColumn("Date dépôt"),
+                            "egid":           st.column_config.TextColumn("EGID"),
+                            "id_dossier":     st.column_config.TextColumn("Dossier"),
+                            "type_dossier":   st.column_config.TextColumn("Type"),
+                            "type_operation": st.column_config.TextColumn("Opération"),
+                            "statut":         st.column_config.TextColumn("Statut"),
+                            "description":    st.column_config.TextColumn("Description"),
+                            "lien_sad": st.column_config.LinkColumn(
+                                "Lien SAD", display_text="Consulter"
+                            ),
+                        },
+                    )
+                    st.caption(
+                        f"{len(df_autor):,} dossier(s) affiché(s) sur {len(autor_records):,} au total."
+                    )
+                else:
+                    st.info(
+                        "Aucun dossier d'autorisation trouvé pour ces bâtiments. "
+                        "Lancez une mise à jour si la base est vide."
+                    )
+        except Exception as e:
+            st.error(f"Erreur dossiers d'autorisation : {e}")
     else:
         st.warning(
             "Veuillez renseigner une ou plusieurs adresses pour afficher les données IDC."
