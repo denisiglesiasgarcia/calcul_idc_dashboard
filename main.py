@@ -1,28 +1,29 @@
 # /main.py
 
 from datetime import datetime
+
 import polars as pl
 import streamlit as st
 
 from sections.helpers.db import (
-    init_history_table,
-    save_history_entry,
-    load_history,
-    delete_history_entry,
-    refresh_adresses_db,
-    init_favorites_table,
-    save_favorite,
-    load_favorites,
     delete_favorite,
+    delete_history_entry,
     get_all_addresses,
     init_autorizations_table,
-    refresh_autorizations_db,
+    init_favorites_table,
+    init_history_table,
     load_autorizations_by_egids,
+    load_favorites,
+    load_history,
+    refresh_adresses_db,
+    refresh_autorizations_db,
+    save_favorite,
+    save_history_entry,
 )
 from sections.helpers.idc_api import fetch_idc_data
-from sections.helpers.idc_geo import convert_geometry_for_streamlit, show_map
 from sections.helpers.idc_charts import create_barplot
-from sections.helpers.idc_tables import show_kpis, show_dataframe
+from sections.helpers.idc_geo import convert_geometry_for_streamlit, show_map
+from sections.helpers.idc_tables import show_dataframe, show_kpis
 
 st.set_page_config(
     layout="wide",
@@ -110,8 +111,9 @@ with st.sidebar:
             status_text.empty()
             st.error(f"Erreur lors de la mise à jour : {e}")
     st.caption(
-        "Sources : [IDC SCANE](https://sitg.ge.ch/donnees/scane-indice-moyennes-3-ans)"
-        " · [Autorisations SITG](https://sitg.ge.ch/donnees/sit-autor-dossier)."
+        "Sources : [SCANE_INDICE_MOYENNES_3_ANS](https://sitg.ge.ch/donnees/scane-indice-moyennes-3-ans)"
+        " · [SIT_AUTOR_DOSSIER](https://sitg.ge.ch/donnees/sit-autor-dossier)."
+        " · [CAD_BATIMENT_HORSOL](https://sitg.ge.ch/donnees/cad-batiment-horsol)"
     )
 
     st.subheader("Favoris")
@@ -407,7 +409,8 @@ try:
             autor_records = load_autorizations_by_egids(egids_int)
             if autor_records:
                 df_autor = pl.DataFrame(autor_records).with_columns(
-                    pl.col("date_depot")
+                    pl
+                    .col("date_depot")
                     .cast(pl.Utf8)
                     .str.slice(0, 10)
                     .alias("date_depot"),
@@ -467,18 +470,16 @@ try:
                         )
 
                     st.dataframe(
-                        df_autor.select(
-                            [
-                                "date_depot",
-                                "egid",
-                                "id_dossier",
-                                "type_dossier",
-                                "type_operation",
-                                "statut",
-                                "description",
-                                "lien_sad",
-                            ]
-                        ).to_pandas(),
+                        df_autor.select([
+                            "date_depot",
+                            "egid",
+                            "id_dossier",
+                            "type_dossier",
+                            "type_operation",
+                            "statut",
+                            "description",
+                            "lien_sad",
+                        ]).to_pandas(),
                         width="stretch",
                         hide_index=True,
                         column_config={
@@ -498,18 +499,16 @@ try:
                     df_autor = df_autor.filter(pl.col("statut").is_in(selected_statuts))
 
                 st.dataframe(
-                    df_autor.select(
-                        [
-                            "date_depot",
-                            "egid",
-                            "id_dossier",
-                            "type_dossier",
-                            "type_operation",
-                            "statut",
-                            "description",
-                            "lien_sad",
-                        ]
-                    ).to_pandas(),
+                    df_autor.select([
+                        "date_depot",
+                        "egid",
+                        "id_dossier",
+                        "type_dossier",
+                        "type_operation",
+                        "statut",
+                        "description",
+                        "lien_sad",
+                    ]).to_pandas(),
                     use_container_width=True,
                     hide_index=True,
                     column_config={
