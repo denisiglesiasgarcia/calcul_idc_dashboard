@@ -212,7 +212,10 @@ st.subheader("Sélection adresse")
 st.markdown(
     """
     <style>
-    span[data-baseweb="tag"] { max-width: none !important; width: fit-content !important; }
+    span[data-baseweb="tag"] {
+        max-width: none !important;
+        width: fit-content !important;
+    }
     span[data-baseweb="tag"] > span:first-child {
         overflow: visible !important; white-space: nowrap !important;
         text-overflow: unset !important; max-width: none !important;
