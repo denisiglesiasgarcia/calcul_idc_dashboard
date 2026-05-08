@@ -5,8 +5,6 @@ import logging
 import polars as pl
 from sitg_api import fetch_all
 from sitg_api.idc import (
-    EXPECTED_SCHEMA,
-    NULLABLE_COLUMNS,
     RESULT_COLUMNS,
     validate_schema,
 )
@@ -54,8 +52,7 @@ def fetch_idc_data(
         return None, None
 
     geometry_records = [
-        {"attributes": f["attributes"], "geometry": f.get("geometry")}
-        for f in features
+        {"attributes": f["attributes"], "geometry": f.get("geometry")} for f in features
     ]
 
     df = pl.from_dicts([f["attributes"] for f in features])
