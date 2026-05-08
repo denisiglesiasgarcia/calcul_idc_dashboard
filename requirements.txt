@@ -8,4 +8,3 @@ altair
 openpyxl
 polars
 psycopg2-binary
-git+https://github.com/denisiglesiasgarcia/sitg-api.git
