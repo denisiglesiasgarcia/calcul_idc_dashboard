@@ -5,15 +5,12 @@ to produce records keyed by EGID, ready for Supabase insertion.
 """
 
 import logging
-import threading
-import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Callable
 
 import geopandas as gpd
-import requests
 from shapely.geometry import MultiPolygon, Point, Polygon
+from sitg_api import fetch_all, stage_progress
 
 logger = logging.getLogger(__name__)
 
@@ -53,96 +50,6 @@ def _ms_to_iso(ms: int | None) -> str | None:
         return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).isoformat()
     except (OSError, OverflowError, ValueError):
         return None
-
-
-def _get_count(url: str) -> int:
-    resp = requests.get(
-        url,
-        params={"where": "1=1", "returnCountOnly": "true", "f": "json"},
-        timeout=30,
-    )
-    resp.raise_for_status()
-    return resp.json().get("count", 0)
-
-
-def _fetch_page(
-    url: str,
-    offset: int,
-    chunk_size: int,
-    fields: str,
-    with_geometry: bool,
-) -> list[dict]:
-    for attempt in range(4):
-        try:
-            r = requests.get(
-                url,
-                params={
-                    "where": "1=1",
-                    "outFields": fields,
-                    "returnGeometry": "true" if with_geometry else "false",
-                    "f": "json",
-                    "resultOffset": offset,
-                    "resultRecordCount": chunk_size,
-                },
-                timeout=120,
-            )
-            r.raise_for_status()
-            return r.json().get("features", [])
-        except requests.exceptions.RequestException:
-            if attempt == 3:
-                raise
-            wait = 2 ** (attempt + 1)
-            logger.warning(f"offset={offset} attempt {attempt + 1}/4, retry in {wait}s")
-            time.sleep(wait)
-    return []
-
-
-def _fetch_all_features(
-    url: str,
-    fields: str,
-    with_geometry: bool,
-    chunk_size: int = 1000,
-    max_workers: int = 3,
-    progress_start: float = 0.0,
-    progress_end: float = 1.0,
-    progress_cb: Callable[[float], None] | None = None,
-    status_cb: Callable[[str], None] | None = None,
-) -> list[dict]:
-    """Paginated parallel fetch from an ArcGIS FeatureServer."""
-    total = _get_count(url)
-    if status_cb:
-        status_cb(f"{total:,} enregistrements trouvés — téléchargement...")
-
-    offsets = list(range(0, max(total, 1), chunk_size))
-    completed = 0
-    lock = threading.Lock()
-    all_features: list[dict] = []
-
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {
-            executor.submit(
-                _fetch_page, url, off, chunk_size, fields, with_geometry
-            ): off
-            for off in offsets
-        }
-        for future in as_completed(futures):
-            off = futures[future]
-            try:
-                features = future.result()
-            except Exception as e:
-                raise RuntimeError(f"Échec offset {off}: {e}") from e
-            with lock:
-                all_features.extend(features)
-                completed += 1
-                if progress_cb:
-                    frac = progress_start + (completed / len(offsets)) * (
-                        progress_end - progress_start
-                    )
-                    progress_cb(min(frac, progress_end))
-                if status_cb:
-                    status_cb(f"Téléchargé {len(all_features):,} / ~{total:,}")
-
-    return all_features
 
 
 def _parse_point(geo: dict | None) -> Point | None:
@@ -187,16 +94,15 @@ def fetch_and_join_autorizations(
     # Stage 1: Authorization dossiers — points (0–40%)
     if status_cb:
         status_cb("Chargement des dossiers d'autorisation SITG...")
-    autor_features = _fetch_all_features(
+    autor_features = fetch_all(
         url_autor,
-        _AUTOR_FIELDS,
+        fields=_AUTOR_FIELDS,
         with_geometry=True,
         chunk_size=chunk_size_autor,
         max_workers=max_workers,
-        progress_start=0.0,
-        progress_end=0.4,
-        progress_cb=progress_cb,
+        progress_cb=stage_progress(progress_cb, 0.0, 0.4),
         status_cb=status_cb,
+        progress=False,
     )
 
     if not autor_features:
@@ -212,16 +118,15 @@ def fetch_and_join_autorizations(
     # Stage 2: Building polygons (40–80%)
     if status_cb:
         status_cb("Chargement des emprises bâtiments SITG...")
-    batiment_features = _fetch_all_features(
+    batiment_features = fetch_all(
         url_batiment,
-        _BATIMENT_FIELDS,
+        fields=_BATIMENT_FIELDS,
         with_geometry=True,
         chunk_size=chunk_size_batiment,
         max_workers=max_workers,
-        progress_start=0.4,
-        progress_end=0.8,
-        progress_cb=progress_cb,
+        progress_cb=stage_progress(progress_cb, 0.4, 0.8),
         status_cb=status_cb,
+        progress=False,
     )
 
     if not batiment_features:
