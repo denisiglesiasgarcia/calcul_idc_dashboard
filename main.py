@@ -9,6 +9,7 @@ from sections.helpers.db import (
     delete_favorite,
     delete_history_entry,
     get_all_addresses,
+    init_adresses_table,
     init_autorizations_table,
     init_favorites_table,
     init_history_table,
@@ -49,6 +50,7 @@ CURRENT_YEAR = datetime.now().year
 # Init DB au démarrage, session_state uniquement pour le reload sidebar
 init_history_table()
 init_favorites_table()
+init_adresses_table()
 init_autorizations_table()
 
 
