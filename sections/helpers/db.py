@@ -417,9 +417,7 @@ def delete_history_entry(entry_id: int) -> None:
     conn = _get_conn()
     try:
         with _write_lock:
-            conn.execute(
-                "DELETE FROM consultation_history WHERE id = ?", (entry_id,)
-            )
+            conn.execute("DELETE FROM consultation_history WHERE id = ?", (entry_id,))
             conn.commit()
     finally:
         conn.close()
@@ -504,6 +502,4 @@ def get_all_addresses() -> pl.DataFrame:
                 "egid": pl.Series([], dtype=pl.Utf8),
             }
         )
-    return pl.DataFrame(
-        {"adresse": [r[0] for r in rows], "egid": [r[1] for r in rows]}
-    )
+    return pl.DataFrame({"adresse": [r[0] for r in rows], "egid": [r[1] for r in rows]})
