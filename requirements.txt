@@ -1,0 +1,11 @@
+# pour les tests
+streamlit
+pandas
+seaborn
+pyproj
+plotly
+pip
+altair
+openpyxl
+polars
+psycopg2-binary
