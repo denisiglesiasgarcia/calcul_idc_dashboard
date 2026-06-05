@@ -13,20 +13,20 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v6
         with:
           ref: ${{ github.head_ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-python@v5.6.0
         with:
-          python-version: "3.11"
+          python-version: "3.13"
 
       - name: Install ruff
         run: pip install ruff
 
       - name: Run ruff check with autofix
-        run: ruff check --fix .
+        run: ruff check --fix
         continue-on-error: true
 
       - name: Run ruff format
@@ -45,11 +45,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: lint
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-python@v5.6.0
         with:
-          python-version: "3.11"
+          python-version: "3.13"
 
       - name: Install dependencies
         run: pip install -r requirements.txt pytest
