@@ -1,4 +1,4 @@
-# /main.py
+# main.py
 
 from datetime import datetime
 
