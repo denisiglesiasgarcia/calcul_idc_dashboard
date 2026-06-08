@@ -25,8 +25,9 @@ uv run streamlit run main.py
 ```
 
 ## Source des données
-- [SCANE_INDICE_MOYENNES_3_ANS](https://sitg.ge.ch/donnees/scane-indice-moyennes-3-ans) : données principales pour le calcul de l'IDC
-
+- [SCANE_INDICE_MOYENNES_3_ANS](https://sitg.ge.ch/donnees/scane-indice-moyennes-3-ans) : données IDC
+- [SIT_AUTOR_DOSSIER](https://sitg.ge.ch/donnees/sit-autor-dossier) : autorisations de construire avec un point qui géolocalise le dossier
+- [CAD_BATIMENT_HORSOL](https://sitg.ge.ch/donnees/cad-batiment-horsol) : cadastre des bâtiments hors-sol avec le polygone d'emprise au sol du bâtiment
 
 ## Fonctionnalités
 

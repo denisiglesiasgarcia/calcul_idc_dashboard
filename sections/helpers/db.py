@@ -392,6 +392,8 @@ def refresh_adresses_db(
 def refresh_db_at_startup_if_needed(
     addresses_url: str,
     refresh_interval: timedelta = timedelta(days=1),
+    progress_bar=None,
+    status_text=None,
 ) -> bool:
     """
     Refresh local caches at startup if they are empty or stale.
@@ -429,10 +431,24 @@ def refresh_db_at_startup_if_needed(
     if not needs_refresh:
         return False
 
+    def _split_progress(bar, offset: float, span: float):
+        """Return a progress callable that maps [0,1] into [offset, offset+span]."""
+        if bar is None:
+            return None
+
+        class _Bar:
+            def progress(self, v):
+                bar.progress(min(offset + v * span, 1.0))
+
+        return _Bar()
+
+    addr_bar = _split_progress(progress_bar, 0.0, 0.5)
+    autor_bar = _split_progress(progress_bar, 0.5, 0.5)
+
     try:
-        refresh_adresses_db(addresses_url)
+        refresh_adresses_db(addresses_url, progress_bar=addr_bar, status_text=status_text)
         get_all_addresses.clear()
-        refresh_autorizations_db()
+        refresh_autorizations_db(progress_bar=autor_bar, status_text=status_text)
         load_autorizations_by_egids.clear()
     except Exception as exc:
         logger.warning("Automatic startup DB refresh failed: %s", exc)
