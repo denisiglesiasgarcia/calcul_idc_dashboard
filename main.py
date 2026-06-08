@@ -51,7 +51,18 @@ init_history_table()
 init_favorites_table()
 init_adresses_table()
 init_autorizations_table()
-refresh_db_at_startup_if_needed(URL_INDICE_MOYENNES_3_ANS)
+
+_startup_placeholder = st.empty()
+with _startup_placeholder.container():
+    st.info("Mise à jour de la base de données en cours…")
+    _pb = st.progress(0)
+    _status = st.empty()
+    _refreshed = refresh_db_at_startup_if_needed(
+        URL_INDICE_MOYENNES_3_ANS,
+        progress_bar=_pb,
+        status_text=_status,
+    )
+_startup_placeholder.empty()
 
 
 if "address_multiselect" not in st.session_state:
