@@ -81,7 +81,9 @@ class TestRefreshDbAtStartupIfNeeded:
         assert refreshed is False
         assert calls == {"addr": 0, "autor": 0}
 
-    def test_refreshes_when_last_refresh_is_older_than_a_day(self, tmp_path, monkeypatch):
+    def test_refreshes_when_last_refresh_is_older_than_a_day(
+        self, tmp_path, monkeypatch
+    ):
         monkeypatch.setattr(db, "DB_PATH", tmp_path / "idc_test.db")
         db.init_adresses_table()
         db.init_autorizations_table()
