@@ -435,7 +435,9 @@ def refresh_db_at_startup_if_needed(
     autor_bar = _split_progress(progress_bar, 0.5, 0.5)
 
     try:
-        refresh_adresses_db(addresses_url, progress_bar=addr_bar, status_text=status_text)
+        refresh_adresses_db(
+            addresses_url, progress_bar=addr_bar, status_text=status_text
+        )
         get_all_addresses.clear()
         refresh_autorizations_db(progress_bar=autor_bar, status_text=status_text)
         load_autorizations_by_egids.clear()
