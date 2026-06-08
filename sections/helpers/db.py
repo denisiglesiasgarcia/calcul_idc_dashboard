@@ -6,7 +6,7 @@ import sqlite3
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import polars as pl
@@ -108,6 +108,20 @@ def init_autorizations_table() -> None:
         """)
         conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_autorizations_egid ON autorizations (egid)
+        """)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def init_metadata_table() -> None:
+    conn = _get_conn()
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS app_metadata (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
         """)
         conn.commit()
     finally:
@@ -373,6 +387,72 @@ def refresh_adresses_db(
     _progress(1.0)
     _status(f"Terminé — {len(unique_records):,} adresses uniques enregistrées.")
     return len(unique_records)
+
+
+def refresh_db_at_startup_if_needed(
+    addresses_url: str,
+    refresh_interval: timedelta = timedelta(days=1),
+) -> bool:
+    """
+    Refresh local caches at startup if they are empty or stale.
+    Returns True if a refresh was executed, False otherwise.
+    """
+    init_metadata_table()
+
+    conn = _get_conn()
+    try:
+        row = conn.execute(
+            "SELECT value FROM app_metadata WHERE key = ?",
+            ("last_full_refresh_utc",),
+        ).fetchone()
+        addr_empty = (
+            conn.execute("SELECT 1 FROM adresses_egid LIMIT 1").fetchone() is None
+        )
+        autor_empty = (
+            conn.execute("SELECT 1 FROM autorizations LIMIT 1").fetchone() is None
+        )
+    finally:
+        conn.close()
+
+    now = datetime.now(timezone.utc)
+    last_refresh = None
+    if row and row[0]:
+        try:
+            last_refresh = datetime.fromisoformat(row[0])
+            if last_refresh.tzinfo is None:
+                last_refresh = last_refresh.replace(tzinfo=timezone.utc)
+        except ValueError:
+            logger.warning("Invalid last_full_refresh_utc value in app_metadata.")
+
+    is_stale = last_refresh is None or (now - last_refresh) >= refresh_interval
+    needs_refresh = addr_empty or autor_empty or is_stale
+    if not needs_refresh:
+        return False
+
+    try:
+        refresh_adresses_db(addresses_url)
+        get_all_addresses.clear()
+        refresh_autorizations_db()
+        load_autorizations_by_egids.clear()
+    except Exception as exc:
+        logger.warning("Automatic startup DB refresh failed: %s", exc)
+        return False
+
+    conn = _get_conn()
+    try:
+        with _write_lock:
+            conn.execute(
+                """
+                INSERT INTO app_metadata (key, value)
+                VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                ("last_full_refresh_utc", now.isoformat()),
+            )
+            conn.commit()
+    finally:
+        conn.close()
+    return True
 
 
 # ---------------------------------------------------------------------------
