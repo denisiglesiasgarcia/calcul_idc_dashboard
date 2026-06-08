@@ -17,6 +17,7 @@ from sections.helpers.db import (
     load_favorites,
     load_history,
     refresh_adresses_db,
+    refresh_db_at_startup_if_needed,
     refresh_autorizations_db,
     save_favorite,
     save_history_entry,
@@ -52,6 +53,7 @@ init_history_table()
 init_favorites_table()
 init_adresses_table()
 init_autorizations_table()
+refresh_db_at_startup_if_needed(URL_INDICE_MOYENNES_3_ANS)
 
 
 if "address_multiselect" not in st.session_state:
