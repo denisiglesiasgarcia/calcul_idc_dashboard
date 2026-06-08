@@ -5,9 +5,7 @@ to produce records keyed by EGID, ready for Supabase insertion.
 """
 
 import logging
-import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Callable
 
@@ -68,10 +66,10 @@ def _get_count(url: str) -> int:
 def _fetch_page(
     url: str,
     offset: int,
-    chunk_size: int,
     fields: str,
     with_geometry: bool,
-) -> list[dict]:
+) -> tuple[list[dict], bool]:
+    """Fetch one page; returns (features, exceededTransferLimit)."""
     for attempt in range(4):
         try:
             r = requests.get(
@@ -80,67 +78,53 @@ def _fetch_page(
                     "where": "1=1",
                     "outFields": fields,
                     "returnGeometry": "true" if with_geometry else "false",
+                    "resultType": "standard",
                     "f": "json",
                     "resultOffset": offset,
-                    "resultRecordCount": chunk_size,
                 },
                 timeout=120,
             )
             r.raise_for_status()
-            return r.json().get("features", [])
+            data = r.json()
+            return data.get("features", []), data.get("exceededTransferLimit", False)
         except requests.exceptions.RequestException:
             if attempt == 3:
                 raise
             wait = 2 ** (attempt + 1)
             logger.warning(f"offset={offset} attempt {attempt + 1}/4, retry in {wait}s")
             time.sleep(wait)
-    return []
+    return [], False
 
 
 def _fetch_all_features(
     url: str,
     fields: str,
     with_geometry: bool,
-    chunk_size: int = 1000,
-    max_workers: int = 3,
     progress_start: float = 0.0,
     progress_end: float = 1.0,
     progress_cb: Callable[[float], None] | None = None,
     status_cb: Callable[[str], None] | None = None,
 ) -> list[dict]:
-    """Paginated parallel fetch from an ArcGIS FeatureServer."""
+    """Paginated sequential fetch using resultType=standard + exceededTransferLimit."""
     total = _get_count(url)
     if status_cb:
         status_cb(f"{total:,} enregistrements trouvés — téléchargement...")
 
-    offsets = list(range(0, max(total, 1), chunk_size))
-    completed = 0
-    lock = threading.Lock()
     all_features: list[dict] = []
+    offset = 0
+    exceeded = True
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {
-            executor.submit(
-                _fetch_page, url, off, chunk_size, fields, with_geometry
-            ): off
-            for off in offsets
-        }
-        for future in as_completed(futures):
-            off = futures[future]
-            try:
-                features = future.result()
-            except Exception as e:
-                raise RuntimeError(f"Échec offset {off}: {e}") from e
-            with lock:
-                all_features.extend(features)
-                completed += 1
-                if progress_cb:
-                    frac = progress_start + (completed / len(offsets)) * (
-                        progress_end - progress_start
-                    )
-                    progress_cb(min(frac, progress_end))
-                if status_cb:
-                    status_cb(f"Téléchargé {len(all_features):,} / ~{total:,}")
+    while exceeded:
+        features, exceeded = _fetch_page(url, offset, fields, with_geometry)
+        all_features.extend(features)
+        offset += len(features)
+        if progress_cb:
+            frac = progress_start + min(offset / max(total, 1), 1.0) * (
+                progress_end - progress_start
+            )
+            progress_cb(min(frac, progress_end))
+        if status_cb:
+            status_cb(f"Téléchargé {len(all_features):,} / ~{total:,}")
 
     return all_features
 
@@ -170,9 +154,6 @@ def _parse_polygon(geo: dict | None) -> Polygon | MultiPolygon | None:
 def fetch_and_join_autorizations(
     url_autor: str = URL_AUTOR_DOSSIER,
     url_batiment: str = URL_BATIMENT_HORSOL,
-    chunk_size_autor: int = 1000,
-    chunk_size_batiment: int = 500,
-    max_workers: int = 3,
     progress_cb: Callable[[float], None] | None = None,
     status_cb: Callable[[str], None] | None = None,
 ) -> list[dict]:
@@ -191,8 +172,6 @@ def fetch_and_join_autorizations(
         url_autor,
         _AUTOR_FIELDS,
         with_geometry=True,
-        chunk_size=chunk_size_autor,
-        max_workers=max_workers,
         progress_start=0.0,
         progress_end=0.4,
         progress_cb=progress_cb,
@@ -216,8 +195,6 @@ def fetch_and_join_autorizations(
         url_batiment,
         _BATIMENT_FIELDS,
         with_geometry=True,
-        chunk_size=chunk_size_batiment,
-        max_workers=max_workers,
         progress_start=0.4,
         progress_end=0.8,
         progress_cb=progress_cb,
