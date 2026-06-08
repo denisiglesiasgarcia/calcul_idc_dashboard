@@ -364,6 +364,12 @@ try:
             data_geometry = st.session_state["_api_geometry"]
             data_df = st.session_state["_api_df"]
 
+        if not data_df:
+            st.error("Impossible de charger les données IDC depuis l'API SITG.")
+            st.stop()
+
+        geojson_data = None
+        centroid = None
         if data_geometry and data_df:
             geojson_data, centroid = convert_geometry_for_streamlit(data_geometry)
 
@@ -384,7 +390,10 @@ try:
 
             st.subheader("Plan de situation")
             with st.expander("Afficher la carte", expanded=True):
-                show_map(geojson_data, centroid)
+                if geojson_data and centroid:
+                    show_map(geojson_data, centroid)
+                else:
+                    st.info("Géométrie non disponible pour ces bâtiments.")
 
             st.subheader("Historique IDC")
             adresses_titre = st.session_state["data_verif_idc"]["adresse"].to_list()
