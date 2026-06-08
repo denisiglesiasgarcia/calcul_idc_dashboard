@@ -18,19 +18,6 @@ cd calcul_idc_dashboard
 uv sync
 ```
 
-## Configuration
-
-Créer le fichier `.streamlit/secrets.toml` avec les identifiants de connexion à la base de données :
-
-```toml
-[supabase]
-host     = "db.<project>.supabase.co"
-port     = 5432
-dbname   = "postgres"
-user     = "postgres"
-password = "..."
-```
-
 ## Lancement
 
 ```bash
@@ -41,7 +28,7 @@ uv run streamlit run main.py
 
 ### Sélection des bâtiments
 
-- Recherche par adresse (base de données Postgresql mise à jour depuis SITG)
+- Recherche par adresse (base de données locale sqlite mise à jour depuis SITG)
 - Analyse de plusieurs bâtiments au même temps
 - Sauvegarde favoris
 - Historique
@@ -55,10 +42,11 @@ uv run streamlit run main.py
   - IDC pondéré par année (cas plusieurs bâtiments) avec variations
   - Agents énergétiques par année et par bâtiment (en jaune/gras si changement)
   - Surface de référence énergétique par année et bâtiment (en jaune/gras si changement)
+  - Autorisations de construire (jointure spatiale entre le point du dossier et le polygone associé à l'EGID)
 
 ### Indicateurs clés (KPIs)
 
-- IDC courant et moyenne 3 ans pondérés par la SRE
+- Dernier IDC disponible et moyenne 3 ans pondérés par la SRE
 - Évolution entre la première et la dernière année disponible
 - Détection des changements d'agent énergétique et de surface
 
@@ -76,4 +64,4 @@ Les tests unitaires couvrent la validation de schéma, l'export Excel, la transf
 
 ## Mise à jour des adresses
 
-La liste des adresses est stockée localement dans Supabase. Pour la synchroniser avec le SITG, utiliser le bouton **Mettre à jour les adresses** dans la barre latérale de l'application.
+La liste des adresses est stockée localement dans Sqlite et mise à jour automatiquement.
