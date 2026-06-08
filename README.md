@@ -76,4 +76,4 @@ Les tests unitaires couvrent la validation de schéma, l'export Excel, la transf
 
 ## Mise à jour des adresses
 
-La liste des adresses est stockée localement dans Supabase. Pour la synchroniser avec le SITG, utiliser le bouton **Mettre à jour les adresses** dans la barre latérale de l'application.
+La liste des adresses est stockée localement dans Supabase et se synchronise automatiquement au démarrage de l'application puis une fois par jour.
