@@ -16,8 +16,7 @@ from sections.helpers.db import (
     load_autorizations_by_egids,
     load_favorites,
     load_history,
-    refresh_adresses_db,
-    refresh_autorizations_db,
+    refresh_db_at_startup_if_needed,
     save_favorite,
     save_history_entry,
 )
@@ -52,6 +51,7 @@ init_history_table()
 init_favorites_table()
 init_adresses_table()
 init_autorizations_table()
+refresh_db_at_startup_if_needed(URL_INDICE_MOYENNES_3_ANS)
 
 
 if "address_multiselect" not in st.session_state:
@@ -80,38 +80,6 @@ with st.sidebar:
         step=1,
     )
 
-    st.subheader("Base de données")
-    if st.button("Mise à jour", width="stretch"):
-        status_text = st.empty()
-        progress_bar = st.progress(0.0)
-        try:
-            # Phase 1 — adresses IDC
-            status_text.caption("Phase 1/2 — Adresses IDC...")
-            n_addr = refresh_adresses_db(
-                URL_INDICE_MOYENNES_3_ANS,
-                progress_bar=progress_bar,
-                status_text=status_text,
-            )
-            get_all_addresses.clear()
-
-            # Phase 2 — dossiers d'autorisation
-            progress_bar.progress(0.0)
-            status_text.caption("Phase 2/2 — Dossiers d'autorisation...")
-            n_autor = refresh_autorizations_db(
-                progress_bar=progress_bar,
-                status_text=status_text,
-            )
-            load_autorizations_by_egids.clear()
-
-            progress_bar.empty()
-            status_text.empty()
-            st.success(
-                f"{n_addr:,} adresses · {n_autor:,} dossiers d'autorisation chargés."
-            )
-        except Exception as e:
-            progress_bar.empty()
-            status_text.empty()
-            st.error(f"Erreur lors de la mise à jour : {e}")
     st.caption(
         "Sources : [SCANE_INDICE_MOYENNES_3_ANS](https://sitg.ge.ch/donnees/scane-indice-moyennes-3-ans)"
         " · [SIT_AUTOR_DOSSIER](https://sitg.ge.ch/donnees/sit-autor-dossier)."
@@ -494,7 +462,7 @@ try:
             else:
                 st.info(
                     "Aucun dossier d'autorisation trouvé pour ces bâtiments. "
-                    "Lancez une mise à jour si la base est vide."
+                    "Les données sont mises à jour automatiquement au démarrage puis chaque jour."
                 )
     else:
         st.warning(

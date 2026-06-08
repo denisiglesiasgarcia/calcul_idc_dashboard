@@ -24,6 +24,10 @@ uv sync
 uv run streamlit run main.py
 ```
 
+## Source des données
+- [SCANE_INDICE_MOYENNES_3_ANS](https://sitg.ge.ch/donnees/scane-indice-moyennes-3-ans) : données principales pour le calcul de l'IDC
+
+
 ## Fonctionnalités
 
 ### Sélection des bâtiments

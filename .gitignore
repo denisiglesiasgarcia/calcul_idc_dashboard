@@ -6,3 +6,5 @@ secrets
 Jupyter
 .claude
 notebook
+__pycache__/
+*.pyc
