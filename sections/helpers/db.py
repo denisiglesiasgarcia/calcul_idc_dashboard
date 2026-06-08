@@ -5,7 +5,6 @@ import logging
 import sqlite3
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -259,14 +258,13 @@ def load_autorizations_by_egids(egids: tuple) -> list[dict]:
 
 def refresh_adresses_db(
     url: str,
-    chunk_size: int = 2000,
-    max_workers: int = 3,
     progress_bar=None,
     status_text=None,
 ) -> int:
     """
     Fetch all address/EGID pairs from SITG and rebuild the local SQLite table.
-    Strategy: parallel fetch with retry, then bulk insert in chunks of 1000.
+    Strategy: sequential fetch with resultType=standard + exceededTransferLimit pagination,
+    then bulk insert in chunks of 1000.
     """
 
     def _status(msg: str) -> None:
@@ -297,12 +295,11 @@ def refresh_adresses_db(
     total_count = resp.json().get("count", 0)
     _status(f"{total_count:,} adresses trouvées — téléchargement...")
 
-    offsets = list(range(0, total_count, chunk_size))
-    completed_pages = 0
-    lock = threading.Lock()
     all_records: list[tuple] = []
+    offset = 0
+    exceeded = True
 
-    def fetch_page(offset: int) -> list[tuple]:
+    while exceeded:
         for attempt in range(4):
             try:
                 r = requests.get(
@@ -312,42 +309,34 @@ def refresh_adresses_db(
                         "outFields": "adresse,egid",
                         "returnDistinctValues": "true",
                         "returnGeometry": "false",
+                        "resultType": "standard",
                         "f": "json",
                         "resultOffset": offset,
-                        "resultRecordCount": chunk_size,
                     },
                     timeout=60,
                 )
                 r.raise_for_status()
-                features = r.json().get("features", [])
-                return [
+                data = r.json()
+                features = data.get("features", [])
+                exceeded = data.get("exceededTransferLimit", False)
+                records = [
                     (f["attributes"]["egid"], f["attributes"]["adresse"])
                     for f in features
                     if f["attributes"].get("egid") and f["attributes"].get("adresse")
                 ]
+                break
             except requests.exceptions.RequestException:
                 if attempt == 3:
-                    raise
+                    raise RuntimeError(f"Échec offset {offset} après 4 tentatives")
                 wait = 2 ** (attempt + 1)
                 logger.warning(
                     f"offset={offset} attempt {attempt + 1}/4 failed, retry in {wait}s"
                 )
                 time.sleep(wait)
-
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(fetch_page, off): off for off in offsets}
-        for future in as_completed(futures):
-            offset = futures[future]
-            try:
-                records = future.result()
-            except Exception as e:
-                raise RuntimeError(f"Échec offset {offset}: {e}") from e
-            with lock:
-                all_records.extend(records)
-                completed_pages += 1
-                frac = completed_pages / len(offsets)
-                _progress(frac * 0.9)
-                _status(f"Téléchargé {len(all_records):,} / ~{total_count:,} adresses")
+        all_records.extend(records)
+        offset += len(features)
+        _progress(min(offset / max(total_count, 1), 1.0) * 0.9)
+        _status(f"Téléchargé {len(all_records):,} / ~{total_count:,} adresses")
 
     _status("Dédoublonnage et écriture en base...")
     df = (
