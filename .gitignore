@@ -8,3 +8,4 @@ Jupyter
 notebook
 __pycache__/
 *.pyc
+idc_local.db

@@ -6,17 +6,18 @@ import polars as pl
 import streamlit as st
 
 from sections.helpers.db import (
-    delete_favorite,
-    delete_history_entry,
     get_all_addresses,
     init_adresses_table,
     init_autorizations_table,
-    init_favorites_table,
-    init_history_table,
     load_autorizations_by_egids,
+    refresh_db_at_startup_if_needed,
+)
+from sections.helpers.user_data import (
+    delete_favorite,
+    delete_history_entry,
+    init_cookie_manager,
     load_favorites,
     load_history,
-    refresh_db_at_startup_if_needed,
     save_favorite,
     save_history_entry,
 )
@@ -46,9 +47,11 @@ URL_INDICE_MOYENNES_3_ANS = (
 
 CURRENT_YEAR = datetime.now().year
 
+# Initialise le CookieManager en tout premier — doit être rendu avant toute
+# lecture/écriture de l'historique ou des favoris.
+init_cookie_manager()
+
 # Init DB au démarrage, session_state uniquement pour le reload sidebar
-init_history_table()
-init_favorites_table()
 init_adresses_table()
 init_autorizations_table()
 

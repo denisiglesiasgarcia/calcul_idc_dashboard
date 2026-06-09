@@ -31,40 +31,6 @@ def _get_conn() -> sqlite3.Connection:
 # ---------------------------------------------------------------------------
 
 
-def init_history_table() -> None:
-    conn = _get_conn()
-    try:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS consultation_history (
-                id     INTEGER PRIMARY KEY AUTOINCREMENT,
-                ts     TEXT NOT NULL,
-                labels TEXT NOT NULL
-            )
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_history_ts
-            ON consultation_history (ts DESC)
-        """)
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def init_favorites_table() -> None:
-    conn = _get_conn()
-    try:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS adresses_favorites (
-                id     INTEGER PRIMARY KEY AUTOINCREMENT,
-                name   TEXT NOT NULL,
-                labels TEXT NOT NULL UNIQUE
-            )
-        """)
-        conn.commit()
-    finally:
-        conn.close()
-
-
 def init_adresses_table() -> None:
     conn = _get_conn()
     try:
@@ -417,97 +383,6 @@ def refresh_db_at_startup_if_needed(
 # ---------------------------------------------------------------------------
 # History
 # ---------------------------------------------------------------------------
-
-
-def save_history_entry(selected_options: list[str]) -> None:
-    labels_json = json.dumps(sorted(selected_options), ensure_ascii=False)
-    conn = _get_conn()
-    try:
-        with _write_lock:
-            cur = conn.execute(
-                "SELECT id FROM consultation_history WHERE labels = ?", (labels_json,)
-            )
-            if cur.fetchone() is None:
-                conn.execute(
-                    "INSERT INTO consultation_history (ts, labels) VALUES (?,?)",
-                    (datetime.utcnow().isoformat(), labels_json),
-                )
-                conn.commit()
-    finally:
-        conn.close()
-    load_history.clear()
-
-
-@st.cache_data(ttl=120)
-def load_history(n: int = 20) -> list[dict]:
-    conn = _get_conn()
-    try:
-        cur = conn.execute(
-            "SELECT id, ts, labels FROM consultation_history ORDER BY ts DESC LIMIT ?",
-            (n,),
-        )
-        rows = cur.fetchall()
-    finally:
-        conn.close()
-    return [{"id": r[0], "ts": r[1], "labels": json.loads(r[2])} for r in rows]
-
-
-def delete_history_entry(entry_id: int) -> None:
-    conn = _get_conn()
-    try:
-        with _write_lock:
-            conn.execute("DELETE FROM consultation_history WHERE id = ?", (entry_id,))
-            conn.commit()
-    finally:
-        conn.close()
-    load_history.clear()
-
-
-# ---------------------------------------------------------------------------
-# Favorites
-# ---------------------------------------------------------------------------
-
-
-def save_favorite(name: str, labels: list[str]) -> bool:
-    labels_json = json.dumps(sorted(labels), ensure_ascii=False)
-    conn = _get_conn()
-    try:
-        with _write_lock:
-            conn.execute(
-                "INSERT INTO adresses_favorites (name, labels) VALUES (?,?)",
-                (name, labels_json),
-            )
-            conn.commit()
-        load_favorites.clear()
-        return True
-    except sqlite3.IntegrityError:
-        return False
-    finally:
-        conn.close()
-
-
-@st.cache_data(ttl=120)
-def load_favorites() -> list[dict]:
-    conn = _get_conn()
-    try:
-        cur = conn.execute(
-            "SELECT id, name, labels FROM adresses_favorites ORDER BY name"
-        )
-        rows = cur.fetchall()
-    finally:
-        conn.close()
-    return [{"id": r[0], "name": r[1], "labels": json.loads(r[2])} for r in rows]
-
-
-def delete_favorite(fav_id: int) -> None:
-    conn = _get_conn()
-    try:
-        with _write_lock:
-            conn.execute("DELETE FROM adresses_favorites WHERE id = ?", (fav_id,))
-            conn.commit()
-    finally:
-        conn.close()
-    load_favorites.clear()
 
 
 # ---------------------------------------------------------------------------
