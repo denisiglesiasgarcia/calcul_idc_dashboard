@@ -7,7 +7,7 @@ Adresse de référence : "Rue de la Prairie 4", Genève.
 
 import polars as pl
 import pytest
-import requests
+from sitg_api import fetch_all
 
 from sections.helpers.idc_api import fetch_idc_data, RESULT_COLUMNS, validate_schema
 
@@ -24,19 +24,13 @@ ADRESSE_TEST = "Rue de la Prairie 4"
 @pytest.fixture(scope="module")
 def egid_prairie() -> int:
     """Résout l'EGID de l'adresse de test via l'API SITG."""
-    resp = requests.get(
+    features = fetch_all(
         URL_SITG,
-        params={
-            "where": f"adresse LIKE '{ADRESSE_TEST}%'",
-            "outFields": "egid,adresse",
-            "returnGeometry": "false",
-            "returnDistinctValues": "true",
-            "f": "json",
-        },
-        timeout=30,
+        fields="egid,adresse",
+        where=f"adresse LIKE '{ADRESSE_TEST}%'",
+        with_geometry=False,
+        progress=False,
     )
-    resp.raise_for_status()
-    features = resp.json().get("features", [])
     assert features, f"Aucune adresse trouvée pour '{ADRESSE_TEST}' dans l'API SITG"
 
     egid = features[0]["attributes"]["egid"]

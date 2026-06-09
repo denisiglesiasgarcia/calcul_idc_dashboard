@@ -5,13 +5,12 @@ to produce records keyed by EGID, ready for Supabase insertion.
 """
 
 import logging
-import time
 from datetime import datetime, timezone
 from typing import Callable
 
 import geopandas as gpd
-import requests
 from shapely.geometry import MultiPolygon, Point, Polygon
+from sitg_api import fetch_all, stage_progress
 
 logger = logging.getLogger(__name__)
 
@@ -53,82 +52,6 @@ def _ms_to_iso(ms: int | None) -> str | None:
         return None
 
 
-def _get_count(url: str) -> int:
-    resp = requests.get(
-        url,
-        params={"where": "1=1", "returnCountOnly": "true", "f": "json"},
-        timeout=30,
-    )
-    resp.raise_for_status()
-    return resp.json().get("count", 0)
-
-
-def _fetch_page(
-    url: str,
-    offset: int,
-    fields: str,
-    with_geometry: bool,
-) -> tuple[list[dict], bool]:
-    """Fetch one page; returns (features, exceededTransferLimit)."""
-    for attempt in range(4):
-        try:
-            r = requests.get(
-                url,
-                params={
-                    "where": "1=1",
-                    "outFields": fields,
-                    "returnGeometry": "true" if with_geometry else "false",
-                    "resultType": "standard",
-                    "f": "json",
-                    "resultOffset": offset,
-                },
-                timeout=120,
-            )
-            r.raise_for_status()
-            data = r.json()
-            return data.get("features", []), data.get("exceededTransferLimit", False)
-        except requests.exceptions.RequestException:
-            if attempt == 3:
-                raise
-            wait = 2 ** (attempt + 1)
-            logger.warning(f"offset={offset} attempt {attempt + 1}/4, retry in {wait}s")
-            time.sleep(wait)
-    return [], False
-
-
-def _fetch_all_features(
-    url: str,
-    fields: str,
-    with_geometry: bool,
-    progress_start: float = 0.0,
-    progress_end: float = 1.0,
-    progress_cb: Callable[[float], None] | None = None,
-    status_cb: Callable[[str], None] | None = None,
-) -> list[dict]:
-    """Paginated sequential fetch using resultType=standard + exceededTransferLimit."""
-    total = _get_count(url)
-    if status_cb:
-        status_cb(f"{total:,} enregistrements trouvés — téléchargement...")
-
-    all_features: list[dict] = []
-    offset = 0
-    exceeded = True
-
-    while exceeded:
-        features, exceeded = _fetch_page(url, offset, fields, with_geometry)
-        all_features.extend(features)
-        offset += len(features)
-        if progress_cb:
-            frac = progress_start + min(offset / max(total, 1), 1.0) * (
-                progress_end - progress_start
-            )
-            progress_cb(min(frac, progress_end))
-        if status_cb:
-            status_cb(f"Téléchargé {len(all_features):,} / ~{total:,}")
-
-    return all_features
-
-
 def _parse_point(geo: dict | None) -> Point | None:
     if not geo:
         return None
@@ -168,13 +91,12 @@ def fetch_and_join_autorizations(
     # Stage 1: Authorization dossiers — points (0–40%)
     if status_cb:
         status_cb("Chargement des dossiers d'autorisation SITG...")
-    autor_features = _fetch_all_features(
+    autor_features = fetch_all(
         url_autor,
-        _AUTOR_FIELDS,
+        fields=_AUTOR_FIELDS,
         with_geometry=True,
-        progress_start=0.0,
-        progress_end=0.4,
-        progress_cb=progress_cb,
+        progress=False,
+        progress_cb=stage_progress(progress_cb, 0.0, 0.4),
         status_cb=status_cb,
     )
 
@@ -191,13 +113,12 @@ def fetch_and_join_autorizations(
     # Stage 2: Building polygons (40–80%)
     if status_cb:
         status_cb("Chargement des emprises bâtiments SITG...")
-    batiment_features = _fetch_all_features(
+    batiment_features = fetch_all(
         url_batiment,
-        _BATIMENT_FIELDS,
+        fields=_BATIMENT_FIELDS,
         with_geometry=True,
-        progress_start=0.4,
-        progress_end=0.8,
-        progress_cb=progress_cb,
+        progress=False,
+        progress_cb=stage_progress(progress_cb, 0.4, 0.8),
         status_cb=status_cb,
     )
 

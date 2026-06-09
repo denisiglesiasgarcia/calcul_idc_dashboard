@@ -1,10 +1,9 @@
 # /sections/helpers/idc_api.py
 
-import json
 import logging
 
 import polars as pl
-import requests
+from sitg_api import fetch_all
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -127,25 +126,20 @@ def fetch_idc_data(
         if isinstance(egid, list)
         else f"egid={egid}"
     )
-    params = {
-        "where": where_clause,
-        "outFields": fields,
-        "returnGeometry": "true",
-        "f": "json",
-        "resultOffset": 0,
-        "resultRecordCount": chunk_size,
-    }
 
     try:
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        data = response.json()
+        features = fetch_all(
+            url,
+            fields=fields,
+            where=where_clause,
+            with_geometry=True,
+            chunk_size=chunk_size,
+            progress=False,
+        )
 
-        if "features" not in data:
-            logging.warning(f"{table_name} → 'features' not found in response")
+        if not features:
+            logging.warning(f"{table_name} → no features returned")
             return None, None
-
-        features = data["features"]
 
         # Geometry records: keep raw attributes + geometry for show_map
         geometry_records = [
@@ -182,25 +176,7 @@ def fetch_idc_data(
 
         return geometry_records, df.to_dicts()
 
-    except requests.exceptions.RequestException as e:
-        logging.error(f"{table_name} → Request error: {e}")
-    except json.JSONDecodeError:
-        logging.error(f"{table_name} → JSON decode error")
+    except Exception as e:
+        logging.error(f"{table_name} → {e}")
 
     return None, None
-
-
-# ---------------------------------------------------------------------------
-# Backward-compatible wrapper — kept for any other callers in the project
-def make_request(
-    offset: int,
-    fields: str,
-    url: str,
-    chunk_size: int,
-    table_name: str,
-    geometry: bool,
-    egid: int | list[int],
-) -> list[dict] | None:
-    """Legacy wrapper around fetch_idc_data(). Prefer fetch_idc_data() for new code."""
-    geo, data = fetch_idc_data(egid, url, fields, chunk_size, table_name)
-    return geo if geometry else data

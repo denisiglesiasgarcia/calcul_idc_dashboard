@@ -14,6 +14,7 @@ dependencies = [
     "pyproj>=3.7.1",
     "pytest>=8.3.5",
     "ruff>=0.11.0",
+    "sitg-api",
     "streamlit>=1.42.2",
 ]
 
@@ -22,3 +23,6 @@ pythonpath = ["."]
 
 [tool.uv]
 link-mode = "copy"
+
+[tool.uv.sources]
+sitg-api = { git = "https://github.com/denisiglesiasgarcia/sitg-api" }

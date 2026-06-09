@@ -4,13 +4,12 @@ import json
 import logging
 import sqlite3
 import threading
-import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import polars as pl
-import requests
 import streamlit as st
+from sitg_api import fetch_all
 
 from sections.helpers.autor_api import fetch_and_join_autorizations
 
@@ -263,8 +262,6 @@ def refresh_adresses_db(
 ) -> int:
     """
     Fetch all address/EGID pairs from SITG and rebuild the local SQLite table.
-    Strategy: sequential fetch with resultType=standard + exceededTransferLimit pagination,
-    then bulk insert in chunks of 1000.
     """
 
     def _status(msg: str) -> None:
@@ -276,67 +273,22 @@ def refresh_adresses_db(
         if progress_bar is not None:
             progress_bar.progress(value)
 
-    _status("Connexion au SITG — récupération du nombre total d'adresses...")
+    _status("Connexion au SITG — récupération des adresses...")
     _progress(0.0)
 
-    resp = requests.get(
+    features = fetch_all(
         url,
-        params={
-            "where": "1=1",
-            "outFields": "adresse,egid",
-            "returnDistinctValues": "true",
-            "returnGeometry": "false",
-            "returnCountOnly": "true",
-            "f": "json",
-        },
-        timeout=30,
+        fields="adresse,egid",
+        with_geometry=False,
+        progress=False,
+        progress_cb=lambda f: _progress(f * 0.9),
+        status_cb=_status,
     )
-    resp.raise_for_status()
-    total_count = resp.json().get("count", 0)
-    _status(f"{total_count:,} adresses trouvées — téléchargement...")
-
-    all_records: list[tuple] = []
-    offset = 0
-    exceeded = True
-
-    while exceeded:
-        for attempt in range(4):
-            try:
-                r = requests.get(
-                    url,
-                    params={
-                        "where": "1=1",
-                        "outFields": "adresse,egid",
-                        "returnDistinctValues": "true",
-                        "returnGeometry": "false",
-                        "resultType": "standard",
-                        "f": "json",
-                        "resultOffset": offset,
-                    },
-                    timeout=60,
-                )
-                r.raise_for_status()
-                data = r.json()
-                features = data.get("features", [])
-                exceeded = data.get("exceededTransferLimit", False)
-                records = [
-                    (f["attributes"]["egid"], f["attributes"]["adresse"])
-                    for f in features
-                    if f["attributes"].get("egid") and f["attributes"].get("adresse")
-                ]
-                break
-            except requests.exceptions.RequestException:
-                if attempt == 3:
-                    raise RuntimeError(f"Échec offset {offset} après 4 tentatives")
-                wait = 2 ** (attempt + 1)
-                logger.warning(
-                    f"offset={offset} attempt {attempt + 1}/4 failed, retry in {wait}s"
-                )
-                time.sleep(wait)
-        all_records.extend(records)
-        offset += len(features)
-        _progress(min(offset / max(total_count, 1), 1.0) * 0.9)
-        _status(f"Téléchargé {len(all_records):,} / ~{total_count:,} adresses")
+    all_records = [
+        (f["attributes"]["egid"], f["attributes"]["adresse"])
+        for f in features
+        if f["attributes"].get("egid") and f["attributes"].get("adresse")
+    ]
 
     _status("Dédoublonnage et écriture en base...")
     df = (
