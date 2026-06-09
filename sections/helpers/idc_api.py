@@ -1,9 +1,10 @@
 # /sections/helpers/idc_api.py
 
+import json
 import logging
 
 import polars as pl
-from sitg_api import fetch_all
+import requests
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -126,20 +127,25 @@ def fetch_idc_data(
         if isinstance(egid, list)
         else f"egid={egid}"
     )
+    params = {
+        "where": where_clause,
+        "outFields": fields,
+        "returnGeometry": "true",
+        "f": "json",
+        "resultOffset": 0,
+        "resultRecordCount": chunk_size,
+    }
 
     try:
-        features = fetch_all(
-            url,
-            fields=fields,
-            where=where_clause,
-            with_geometry=True,
-            chunk_size=chunk_size,
-            progress=False,
-        )
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
 
-        if not features:
-            logging.warning(f"{table_name} → no features returned")
+        if "features" not in data:
+            logging.warning(f"{table_name} → 'features' not found in response")
             return None, None
+
+        features = data["features"]
 
         # Geometry records: keep raw attributes + geometry for show_map
         geometry_records = [
@@ -176,7 +182,9 @@ def fetch_idc_data(
 
         return geometry_records, df.to_dicts()
 
-    except Exception as e:
-        logging.error(f"{table_name} → {e}")
+    except requests.exceptions.RequestException as e:
+        logging.error(f"{table_name} → Request error: {e}")
+    except json.JSONDecodeError:
+        logging.error(f"{table_name} → JSON decode error")
 
     return None, None
