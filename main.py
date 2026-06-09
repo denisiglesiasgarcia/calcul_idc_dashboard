@@ -393,7 +393,7 @@ try:
 
             st.subheader("Plan de situation")
             with st.expander("Afficher la carte", expanded=True):
-                if geojson_data and centroid:
+                if geojson_data is not None and centroid is not None:
                     show_map(geojson_data, centroid)
                 else:
                     st.info("Géométrie non disponible pour ces bâtiments.")
