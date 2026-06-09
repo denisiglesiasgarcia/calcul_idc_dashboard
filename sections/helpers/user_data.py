@@ -104,7 +104,9 @@ def delete_history_entry(entry_id: int) -> None:
 def load_favorites() -> list[dict]:
     """Return all favourites sorted by name, each with a positional id."""
     favs = _load(_COOKIE_FAVORITES)
-    return [{"id": i, "name": f["name"], "labels": f["labels"]} for i, f in enumerate(favs)]
+    return [
+        {"id": i, "name": f["name"], "labels": f["labels"]} for i, f in enumerate(favs)
+    ]
 
 
 def save_favorite(name: str, labels: list[str]) -> bool:
