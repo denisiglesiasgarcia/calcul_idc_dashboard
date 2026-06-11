@@ -182,14 +182,10 @@ class TestRefreshIdcDb:
         monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
         db.init_idc_table()
 
-        monkeypatch.setattr(
-            db, "fetch_all", lambda *a, **kw: [_make_feature(egid=1)]
-        )
+        monkeypatch.setattr(db, "fetch_all", lambda *a, **kw: [_make_feature(egid=1)])
         db.refresh_idc_db("http://fake")
 
-        monkeypatch.setattr(
-            db, "fetch_all", lambda *a, **kw: [_make_feature(egid=2)]
-        )
+        monkeypatch.setattr(db, "fetch_all", lambda *a, **kw: [_make_feature(egid=2)])
         db.refresh_idc_db("http://fake")
 
         conn = sqlite3.connect(db.DB_PATH)
@@ -210,9 +206,7 @@ class TestRefreshIdcDb:
 
         assert count == 0
 
-    def test_calls_fetch_all_with_all_fields_and_geometry(
-        self, tmp_path, monkeypatch
-    ):
+    def test_calls_fetch_all_with_all_fields_and_geometry(self, tmp_path, monkeypatch):
         monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
         db.init_idc_table()
 
@@ -248,15 +242,32 @@ class TestLoadIdcByEgids:
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
-                    a["egid"], a["annee"], a["indice"], a["sre"],
-                    a["adresse"], a["npa"], a["commune"], a["destination"],
-                    a["agent_energetique_1"], a["quantite_agent_energetique_1"], a["unite_agent_energetique_1"],
-                    a["agent_energetique_2"], a["quantite_agent_energetique_2"], a["unite_agent_energetique_2"],
-                    a["agent_energetique_3"], a["quantite_agent_energetique_3"], a["unite_agent_energetique_3"],
-                    a["date_debut_periode"], a["date_fin_periode"], a["date_saisie"],
-                    a["indice_moy2"], a["annees_concernees_moy_2"],
-                    a["indice_moy3"], a["annees_concernees_moy_3"],
-                    a["id_concessionnaire"], a["nbre_preneur"],
+                    a["egid"],
+                    a["annee"],
+                    a["indice"],
+                    a["sre"],
+                    a["adresse"],
+                    a["npa"],
+                    a["commune"],
+                    a["destination"],
+                    a["agent_energetique_1"],
+                    a["quantite_agent_energetique_1"],
+                    a["unite_agent_energetique_1"],
+                    a["agent_energetique_2"],
+                    a["quantite_agent_energetique_2"],
+                    a["unite_agent_energetique_2"],
+                    a["agent_energetique_3"],
+                    a["quantite_agent_energetique_3"],
+                    a["unite_agent_energetique_3"],
+                    a["date_debut_periode"],
+                    a["date_fin_periode"],
+                    a["date_saisie"],
+                    a["indice_moy2"],
+                    a["annees_concernees_moy_2"],
+                    a["indice_moy3"],
+                    a["annees_concernees_moy_3"],
+                    a["id_concessionnaire"],
+                    a["nbre_preneur"],
                     json.dumps(geom) if geom else None,
                 ),
             )
