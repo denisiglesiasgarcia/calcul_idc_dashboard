@@ -28,6 +28,10 @@ _write_lock = threading.Lock()
 _refresh_lock = threading.Lock()
 _refresh_thread: threading.Thread | None = None
 _refresh_state: dict | None = None
+# Minimum gap between refresh attempts when a cache table is empty but the last
+# refresh is recent — bounds retries so a persistently-empty source can't trigger
+# a full download on every Streamlit rerun.
+_EMPTY_RETRY_COOLDOWN = timedelta(minutes=15)
 
 
 def _get_conn() -> sqlite3.Connection:
@@ -578,11 +582,24 @@ def _refresh_needed(refresh_interval: timedelta) -> bool:
         except ValueError:
             logger.warning("Invalid last_full_refresh_utc value in app_metadata.")
 
-    is_stale = (
-        last_refresh is None
-        or (datetime.now(timezone.utc) - last_refresh) >= refresh_interval
-    )
-    return addr_empty or autor_empty or idc_empty or is_stale
+    # No successful refresh on record yet → always run (first/cold start).
+    if last_refresh is None:
+        return True
+
+    age = datetime.now(timezone.utc) - last_refresh
+
+    # Stale → run the regular daily refresh.
+    if age >= refresh_interval:
+        return True
+
+    # A table is empty despite a recent refresh (e.g. a source layer returned no
+    # rows, or a transient failure). Retry — but at most once per cooldown, NOT on
+    # every rerun, otherwise adding an address would re-trigger the full download.
+    any_empty = addr_empty or autor_empty or idc_empty
+    if any_empty and age >= _EMPTY_RETRY_COOLDOWN:
+        return True
+
+    return False
 
 
 def _split_progress(bar, offset: float, span: float):

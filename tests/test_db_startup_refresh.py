@@ -150,9 +150,9 @@ class TestRefreshDbAtStartupIfNeeded:
         assert refreshed is True
         assert calls == {"addr": 1, "autor": 1, "idc": 1}
 
-    def test_refreshes_when_tables_are_empty_even_with_recent_timestamp(
-        self, tmp_path, monkeypatch
-    ):
+    def test_skips_refresh_when_empty_but_within_cooldown(self, tmp_path, monkeypatch):
+        # Empty tables + a very recent refresh must NOT re-trigger on every rerun;
+        # the empty-retry cooldown suppresses it.
         monkeypatch.setattr(db, "DB_PATH", tmp_path / "idc_test.db")
         _init_all_tables()
         _set_last_refresh(db.DB_PATH, datetime.now(timezone.utc))
@@ -176,10 +176,43 @@ class TestRefreshDbAtStartupIfNeeded:
 
         refreshed = db.refresh_db_at_startup_if_needed("http://fake")
 
+        assert refreshed is False
+        assert calls == {"addr": 0, "autor": 0, "idc": 0}
+
+    def test_refreshes_when_empty_and_cooldown_elapsed(self, tmp_path, monkeypatch):
+        # Empty tables + last refresh older than the cooldown → retry once.
+        monkeypatch.setattr(db, "DB_PATH", tmp_path / "idc_test.db")
+        _init_all_tables()
+        _set_last_refresh(
+            db.DB_PATH,
+            datetime.now(timezone.utc) - db._EMPTY_RETRY_COOLDOWN - timedelta(minutes=1),
+        )
+
+        calls = {"addr": 0, "autor": 0, "idc": 0}
+        monkeypatch.setattr(
+            db,
+            "refresh_adresses_db",
+            lambda url, **kw: calls.__setitem__("addr", calls["addr"] + 1) or 1,
+        )
+        monkeypatch.setattr(
+            db,
+            "refresh_autorizations_db",
+            lambda **kw: calls.__setitem__("autor", calls["autor"] + 1) or 1,
+        )
+        monkeypatch.setattr(
+            db,
+            "refresh_idc_db",
+            lambda url, **kw: calls.__setitem__("idc", calls["idc"] + 1) or 1,
+        )
+
+        refreshed = db.refresh_db_at_startup_if_needed("http://fake")
+
         assert refreshed is True
         assert calls == {"addr": 1, "autor": 1, "idc": 1}
 
-    def test_refreshes_when_only_idc_table_is_empty(self, tmp_path, monkeypatch):
+    def test_skips_refresh_when_only_idc_empty_but_within_cooldown(
+        self, tmp_path, monkeypatch
+    ):
         monkeypatch.setattr(db, "DB_PATH", tmp_path / "idc_test.db")
         _init_all_tables()
 
@@ -216,5 +249,5 @@ class TestRefreshDbAtStartupIfNeeded:
 
         refreshed = db.refresh_db_at_startup_if_needed("http://fake")
 
-        assert refreshed is True
-        assert calls == {"addr": 1, "autor": 1, "idc": 1}
+        assert refreshed is False
+        assert calls == {"addr": 0, "autor": 0, "idc": 0}
