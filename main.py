@@ -342,10 +342,23 @@ with st.expander("Charger depuis une liste d'adresses"):
             st.warning("Aucune adresse correspondante trouvée dans la base locale.")
 
 if selected_options:
-    st.write(f"{len(selected_options)} adresse(s) sélectionnée(s)")
-    selected_rows = [options_map[opt] for opt in selected_options]
-    st.session_state["data_verif_idc"] = pl.DataFrame(selected_rows)
-    save_history_entry(selected_options)
+    # Une sélection peut contenir des labels absents de la base locale courante
+    # (favori/historique restauré depuis un cookie, ou base vide/incomplète après
+    # un échec de rafraîchissement). On ignore les labels inconnus au lieu de crasher.
+    selected_rows = [options_map[opt] for opt in selected_options if opt in options_map]
+    missing = [opt for opt in selected_options if opt not in options_map]
+    if missing:
+        st.warning(
+            f"{len(missing)} adresse(s) introuvable(s) dans la base locale, ignorée(s) : "
+            f"{', '.join(missing)}"
+        )
+    if selected_rows:
+        st.write(f"{len(selected_rows)} adresse(s) sélectionnée(s)")
+        st.session_state["data_verif_idc"] = pl.DataFrame(selected_rows)
+        save_history_entry([opt for opt in selected_options if opt in options_map])
+    else:
+        # Aucun label valide : évite d'afficher d'éventuels résultats périmés.
+        st.session_state["data_verif_idc"] = pl.DataFrame()
 
 # --------------------------------------------------------------------------------------
 try:
