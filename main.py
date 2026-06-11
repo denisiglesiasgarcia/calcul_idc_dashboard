@@ -5,6 +5,12 @@ from datetime import datetime
 import polars as pl
 import streamlit as st
 
+try:
+    # Logs sitg_api (téléchargements SITG) : horodatage local + sink compatible tqdm.
+    from sitg_api import configure_logging
+except ImportError:  # version de sitg_api antérieure à configure_logging
+    configure_logging = None
+
 from sections.helpers.db import (
     get_all_addresses,
     init_adresses_table,
@@ -26,6 +32,11 @@ from sections.helpers.user_data import (
 from sections.helpers.idc_charts import create_barplot
 from sections.helpers.idc_geo import convert_geometry_for_streamlit, show_map
 from sections.helpers.idc_tables import show_dataframe, show_kpis
+
+# Active les logs sitg_api une fois par session (loguru, heure locale).
+if configure_logging is not None and "_logging_configured" not in st.session_state:
+    configure_logging(level="INFO")
+    st.session_state["_logging_configured"] = True
 
 st.set_page_config(
     layout="wide",

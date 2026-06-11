@@ -8,4 +8,7 @@ Jupyter
 notebook
 __pycache__/
 *.pyc
+# Runtime SQLite cache (regenerated at startup) + WAL sidecar files
 idc_local.db
+idc_local.db-wal
+idc_local.db-shm

@@ -582,21 +582,31 @@ def _refresh_needed(refresh_interval: timedelta) -> bool:
         except ValueError:
             logger.warning("Invalid last_full_refresh_utc value in app_metadata.")
 
-    # No successful refresh on record yet → always run (first/cold start).
+    # No refresh attempt on record yet → always run (first/cold start).
     if last_refresh is None:
+        logger.info("Refresh needed: no last_full_refresh_utc recorded.")
         return True
 
     age = datetime.now(timezone.utc) - last_refresh
 
     # Stale → run the regular daily refresh.
     if age >= refresh_interval:
+        logger.info("Refresh needed: last refresh is stale (age=%s).", age)
         return True
 
-    # A table is empty despite a recent refresh (e.g. a source layer returned no
-    # rows, or a transient failure). Retry — but at most once per cooldown, NOT on
-    # every rerun, otherwise adding an address would re-trigger the full download.
+    # A table is empty despite a recent attempt (e.g. a source layer returned no
+    # rows, or a stage failed). Retry — but at most once per cooldown, NOT on every
+    # rerun, otherwise adding an address would re-trigger the full download.
     any_empty = addr_empty or autor_empty or idc_empty
     if any_empty and age >= _EMPTY_RETRY_COOLDOWN:
+        logger.info(
+            "Refresh needed: empty table past cooldown "
+            "(addr_empty=%s autor_empty=%s idc_empty=%s age=%s).",
+            addr_empty,
+            autor_empty,
+            idc_empty,
+            age,
+        )
         return True
 
     return False
@@ -647,16 +657,37 @@ def _do_full_refresh(addresses_url: str, state: dict) -> None:
     autor_bar = _split_progress(bar, 1 / 3, 1 / 3)
     addr_bar = _split_progress(bar, 2 / 3, 1 / 3)
 
+    # Each stage is isolated: a failure in one (e.g. autorizations) must NOT skip
+    # the timestamp write, otherwise last_full_refresh_utc stays unset and the gate
+    # re-triggers a full refresh on EVERY rerun (the empty-retry cooldown only
+    # applies once a timestamp exists). A persistently-failing stage instead leaves
+    # its table empty and is retried at the bounded cooldown cadence.
+    errors: list[str] = []
+
+    # IDC first — the addresses table is derived from idc_data.
     try:
-        # IDC first — the addresses table is derived from idc_data, so it must
-        # be populated before refresh_adresses_db runs.
         refresh_idc_db(addresses_url, progress_bar=idc_bar, status_text=status)
         load_idc_by_egids.clear()
+    except Exception as exc:
+        logger.warning("IDC refresh failed: %s", exc)
+        errors.append(f"idc: {exc}")
+
+    try:
         refresh_autorizations_db(progress_bar=autor_bar, status_text=status)
         load_autorizations_by_egids.clear()
+    except Exception as exc:
+        logger.warning("Autorizations refresh failed: %s", exc)
+        errors.append(f"autor: {exc}")
+
+    try:
         refresh_adresses_db(addresses_url, progress_bar=addr_bar, status_text=status)
         get_all_addresses.clear()
+    except Exception as exc:
+        logger.warning("Adresses refresh failed: %s", exc)
+        errors.append(f"adresses: {exc}")
 
+    # Always record the attempt time, even on partial failure.
+    try:
         now = datetime.now(timezone.utc)
         conn = _get_conn()
         try:
@@ -673,11 +704,12 @@ def _do_full_refresh(addresses_url: str, state: dict) -> None:
         finally:
             conn.close()
     except Exception as exc:
-        logger.warning("Automatic startup DB refresh failed: %s", exc)
-        state["error"] = str(exc)
-    finally:
-        state["progress"] = 1.0
-        state["done"] = True
+        logger.warning("Failed to record refresh timestamp: %s", exc)
+        errors.append(f"timestamp: {exc}")
+
+    state["error"] = "; ".join(errors) if errors else None
+    state["progress"] = 1.0
+    state["done"] = True
 
 
 def refresh_db_at_startup_if_needed(
