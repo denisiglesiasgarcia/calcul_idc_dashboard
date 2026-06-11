@@ -18,6 +18,10 @@ logger.setLevel(logging.INFO)
 
 DB_PATH = Path(__file__).parent.parent.parent / "idc_local.db"
 _write_lock = threading.Lock()
+# Serialise the startup refresh across concurrent script runs in the same process
+# (multiple sessions, reconnects, or the cookie-manager's initial rerun) so the
+# full download runs once, not once per run that races the timestamp write.
+_refresh_lock = threading.Lock()
 
 
 def _get_conn() -> sqlite3.Connection:
@@ -541,18 +545,8 @@ def refresh_adresses_db(
     return len(unique_records)
 
 
-def refresh_db_at_startup_if_needed(
-    addresses_url: str,
-    refresh_interval: timedelta = timedelta(days=1),
-    progress_bar=None,
-    status_text=None,
-) -> bool:
-    """
-    Refresh local caches at startup if they are empty or stale.
-    Returns True if a refresh was executed, False otherwise.
-    """
-    init_metadata_table()
-
+def _refresh_needed(refresh_interval: timedelta) -> bool:
+    """True if any cache table is empty or the last full refresh is stale."""
     conn = _get_conn()
     try:
         row = conn.execute(
@@ -569,7 +563,6 @@ def refresh_db_at_startup_if_needed(
     finally:
         conn.close()
 
-    now = datetime.now(timezone.utc)
     last_refresh = None
     if row and row[0]:
         try:
@@ -579,56 +572,87 @@ def refresh_db_at_startup_if_needed(
         except ValueError:
             logger.warning("Invalid last_full_refresh_utc value in app_metadata.")
 
-    is_stale = last_refresh is None or (now - last_refresh) >= refresh_interval
-    needs_refresh = addr_empty or autor_empty or idc_empty or is_stale
-    if not needs_refresh:
+    is_stale = (
+        last_refresh is None
+        or (datetime.now(timezone.utc) - last_refresh) >= refresh_interval
+    )
+    return addr_empty or autor_empty or idc_empty or is_stale
+
+
+def refresh_db_at_startup_if_needed(
+    addresses_url: str,
+    refresh_interval: timedelta = timedelta(days=1),
+    progress_bar=None,
+    status_text=None,
+) -> bool:
+    """
+    Refresh local caches at startup if they are empty or stale.
+    Returns True if a refresh was executed, False otherwise.
+
+    Uses double-checked locking so that when several script runs start at once
+    (multiple sessions, a reconnect, or the cookie-manager rerun) the heavy
+    download runs only once: the first run holds _refresh_lock and refreshes,
+    the others block then re-check the gate — which is now fresh — and skip.
+    """
+    init_metadata_table()
+
+    # Fast path, no lock: already fresh → nothing to do.
+    if not _refresh_needed(refresh_interval):
         return False
 
-    def _split_progress(bar, offset: float, span: float):
-        """Return a progress callable that maps [0,1] into [offset, offset+span]."""
-        if bar is None:
-            return None
+    with _refresh_lock:
+        # Re-check inside the lock: another run may have just finished refreshing
+        # while we were waiting to acquire it.
+        if not _refresh_needed(refresh_interval):
+            return False
 
-        class _Bar:
-            def progress(self, v):
-                bar.progress(min(offset + v * span, 1.0))
+        now = datetime.now(timezone.utc)
 
-        return _Bar()
+        def _split_progress(bar, offset: float, span: float):
+            """Return a progress callable mapping [0,1] into [offset, offset+span]."""
+            if bar is None:
+                return None
 
-    idc_bar = _split_progress(progress_bar, 0.0, 1 / 3)
-    autor_bar = _split_progress(progress_bar, 1 / 3, 1 / 3)
-    addr_bar = _split_progress(progress_bar, 2 / 3, 1 / 3)
+            class _Bar:
+                def progress(self, v):
+                    bar.progress(min(offset + v * span, 1.0))
 
-    try:
-        # IDC first — the addresses table is derived from idc_data, so it must
-        # be populated before refresh_adresses_db runs.
-        refresh_idc_db(addresses_url, progress_bar=idc_bar, status_text=status_text)
-        load_idc_by_egids.clear()
-        refresh_autorizations_db(progress_bar=autor_bar, status_text=status_text)
-        load_autorizations_by_egids.clear()
-        refresh_adresses_db(
-            addresses_url, progress_bar=addr_bar, status_text=status_text
-        )
-        get_all_addresses.clear()
-    except Exception as exc:
-        logger.warning("Automatic startup DB refresh failed: %s", exc)
-        return False
+            return _Bar()
 
-    conn = _get_conn()
-    try:
-        with _write_lock:
-            conn.execute(
-                """
-                INSERT INTO app_metadata (key, value)
-                VALUES (?, ?)
-                ON CONFLICT(key) DO UPDATE SET value = excluded.value
-                """,
-                ("last_full_refresh_utc", now.isoformat()),
+        idc_bar = _split_progress(progress_bar, 0.0, 1 / 3)
+        autor_bar = _split_progress(progress_bar, 1 / 3, 1 / 3)
+        addr_bar = _split_progress(progress_bar, 2 / 3, 1 / 3)
+
+        try:
+            # IDC first — the addresses table is derived from idc_data, so it must
+            # be populated before refresh_adresses_db runs.
+            refresh_idc_db(addresses_url, progress_bar=idc_bar, status_text=status_text)
+            load_idc_by_egids.clear()
+            refresh_autorizations_db(progress_bar=autor_bar, status_text=status_text)
+            load_autorizations_by_egids.clear()
+            refresh_adresses_db(
+                addresses_url, progress_bar=addr_bar, status_text=status_text
             )
-            conn.commit()
-    finally:
-        conn.close()
-    return True
+            get_all_addresses.clear()
+        except Exception as exc:
+            logger.warning("Automatic startup DB refresh failed: %s", exc)
+            return False
+
+        conn = _get_conn()
+        try:
+            with _write_lock:
+                conn.execute(
+                    """
+                    INSERT INTO app_metadata (key, value)
+                    VALUES (?, ?)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                    """,
+                    ("last_full_refresh_utc", now.isoformat()),
+                )
+                conn.commit()
+        finally:
+            conn.close()
+        return True
 
 
 # ---------------------------------------------------------------------------
