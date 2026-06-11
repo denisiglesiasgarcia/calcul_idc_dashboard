@@ -272,13 +272,32 @@ def load_autorizations_by_egids(egids: tuple) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 _IDC_COLS = [
-    "egid", "annee", "indice", "sre", "adresse", "npa", "commune", "destination",
-    "agent_energetique_1", "quantite_agent_energetique_1", "unite_agent_energetique_1",
-    "agent_energetique_2", "quantite_agent_energetique_2", "unite_agent_energetique_2",
-    "agent_energetique_3", "quantite_agent_energetique_3", "unite_agent_energetique_3",
-    "date_debut_periode", "date_fin_periode", "date_saisie",
-    "indice_moy2", "annees_concernees_moy_2", "indice_moy3", "annees_concernees_moy_3",
-    "id_concessionnaire", "nbre_preneur",
+    "egid",
+    "annee",
+    "indice",
+    "sre",
+    "adresse",
+    "npa",
+    "commune",
+    "destination",
+    "agent_energetique_1",
+    "quantite_agent_energetique_1",
+    "unite_agent_energetique_1",
+    "agent_energetique_2",
+    "quantite_agent_energetique_2",
+    "unite_agent_energetique_2",
+    "agent_energetique_3",
+    "quantite_agent_energetique_3",
+    "unite_agent_energetique_3",
+    "date_debut_periode",
+    "date_fin_periode",
+    "date_saisie",
+    "indice_moy2",
+    "annees_concernees_moy_2",
+    "indice_moy3",
+    "annees_concernees_moy_3",
+    "id_concessionnaire",
+    "nbre_preneur",
 ]
 
 
@@ -340,18 +359,37 @@ def refresh_idc_db(
     for row in df.to_dicts():
         orig_idx = row.pop("_idx")
         geom = geometries[orig_idx]
-        rows.append((
-            row["egid"], row["annee"], row["indice"], row["sre"],
-            row["adresse"], row["npa"], row["commune"], row["destination"],
-            row["agent_energetique_1"], row["quantite_agent_energetique_1"], row["unite_agent_energetique_1"],
-            row["agent_energetique_2"], row["quantite_agent_energetique_2"], row["unite_agent_energetique_2"],
-            row["agent_energetique_3"], row["quantite_agent_energetique_3"], row["unite_agent_energetique_3"],
-            row["date_debut_periode"], row["date_fin_periode"], row["date_saisie"],
-            row["indice_moy2"], row["annees_concernees_moy_2"],
-            row["indice_moy3"], row["annees_concernees_moy_3"],
-            row["id_concessionnaire"], row["nbre_preneur"],
-            json.dumps(geom) if geom else None,
-        ))
+        rows.append(
+            (
+                row["egid"],
+                row["annee"],
+                row["indice"],
+                row["sre"],
+                row["adresse"],
+                row["npa"],
+                row["commune"],
+                row["destination"],
+                row["agent_energetique_1"],
+                row["quantite_agent_energetique_1"],
+                row["unite_agent_energetique_1"],
+                row["agent_energetique_2"],
+                row["quantite_agent_energetique_2"],
+                row["unite_agent_energetique_2"],
+                row["agent_energetique_3"],
+                row["quantite_agent_energetique_3"],
+                row["unite_agent_energetique_3"],
+                row["date_debut_periode"],
+                row["date_fin_periode"],
+                row["date_saisie"],
+                row["indice_moy2"],
+                row["annees_concernees_moy_2"],
+                row["indice_moy3"],
+                row["annees_concernees_moy_3"],
+                row["id_concessionnaire"],
+                row["nbre_preneur"],
+                json.dumps(geom) if geom else None,
+            )
+        )
 
     _status(f"Écriture de {len(rows):,} enregistrements IDC en base...")
 
@@ -428,9 +466,8 @@ def load_idc_by_egids(
         data_attrs.append(d)
 
     try:
-        df = (
-            pl.from_dicts(data_attrs)
-            .with_columns([
+        df = pl.from_dicts(data_attrs).with_columns(
+            [
                 pl.col("date_debut_periode").cast(pl.Datetime("ms")),
                 pl.col("date_fin_periode").cast(pl.Datetime("ms")),
                 pl.col("date_saisie").cast(pl.Datetime("ms")),
@@ -438,7 +475,7 @@ def load_idc_by_egids(
                 pl.col("quantite_agent_energetique_1").cast(pl.Float64),
                 pl.col("quantite_agent_energetique_2").cast(pl.Float64),
                 pl.col("quantite_agent_energetique_3").cast(pl.Float64),
-            ])
+            ]
         )
         return geometry_records, df.to_dicts()
     except Exception as exc:
@@ -524,9 +561,7 @@ def refresh_db_at_startup_if_needed(
         autor_empty = (
             conn.execute("SELECT 1 FROM autorizations LIMIT 1").fetchone() is None
         )
-        idc_empty = (
-            conn.execute("SELECT 1 FROM idc_data LIMIT 1").fetchone() is None
-        )
+        idc_empty = conn.execute("SELECT 1 FROM idc_data LIMIT 1").fetchone() is None
     finally:
         conn.close()
 

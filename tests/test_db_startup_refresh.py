@@ -48,15 +48,18 @@ class TestRefreshDbAtStartupIfNeeded:
 
         calls = {"addr": 0, "autor": 0, "idc": 0}
         monkeypatch.setattr(
-            db, "refresh_adresses_db",
+            db,
+            "refresh_adresses_db",
             lambda url, **kw: calls.__setitem__("addr", calls["addr"] + 1) or 1,
         )
         monkeypatch.setattr(
-            db, "refresh_autorizations_db",
+            db,
+            "refresh_autorizations_db",
             lambda **kw: calls.__setitem__("autor", calls["autor"] + 1) or 1,
         )
         monkeypatch.setattr(
-            db, "refresh_idc_db",
+            db,
+            "refresh_idc_db",
             lambda url, **kw: calls.__setitem__("idc", calls["idc"] + 1) or 1,
         )
 
@@ -85,15 +88,18 @@ class TestRefreshDbAtStartupIfNeeded:
 
         calls = {"addr": 0, "autor": 0, "idc": 0}
         monkeypatch.setattr(
-            db, "refresh_adresses_db",
+            db,
+            "refresh_adresses_db",
             lambda url, **kw: calls.__setitem__("addr", calls["addr"] + 1) or 1,
         )
         monkeypatch.setattr(
-            db, "refresh_autorizations_db",
+            db,
+            "refresh_autorizations_db",
             lambda **kw: calls.__setitem__("autor", calls["autor"] + 1) or 1,
         )
         monkeypatch.setattr(
-            db, "refresh_idc_db",
+            db,
+            "refresh_idc_db",
             lambda url, **kw: calls.__setitem__("idc", calls["idc"] + 1) or 1,
         )
 
@@ -124,15 +130,18 @@ class TestRefreshDbAtStartupIfNeeded:
 
         calls = {"addr": 0, "autor": 0, "idc": 0}
         monkeypatch.setattr(
-            db, "refresh_adresses_db",
+            db,
+            "refresh_adresses_db",
             lambda url, **kw: calls.__setitem__("addr", calls["addr"] + 1) or 1,
         )
         monkeypatch.setattr(
-            db, "refresh_autorizations_db",
+            db,
+            "refresh_autorizations_db",
             lambda **kw: calls.__setitem__("autor", calls["autor"] + 1) or 1,
         )
         monkeypatch.setattr(
-            db, "refresh_idc_db",
+            db,
+            "refresh_idc_db",
             lambda url, **kw: calls.__setitem__("idc", calls["idc"] + 1) or 1,
         )
 
@@ -150,15 +159,18 @@ class TestRefreshDbAtStartupIfNeeded:
 
         calls = {"addr": 0, "autor": 0, "idc": 0}
         monkeypatch.setattr(
-            db, "refresh_adresses_db",
+            db,
+            "refresh_adresses_db",
             lambda url, **kw: calls.__setitem__("addr", calls["addr"] + 1) or 1,
         )
         monkeypatch.setattr(
-            db, "refresh_autorizations_db",
+            db,
+            "refresh_autorizations_db",
             lambda **kw: calls.__setitem__("autor", calls["autor"] + 1) or 1,
         )
         monkeypatch.setattr(
-            db, "refresh_idc_db",
+            db,
+            "refresh_idc_db",
             lambda url, **kw: calls.__setitem__("idc", calls["idc"] + 1) or 1,
         )
 
@@ -187,15 +199,18 @@ class TestRefreshDbAtStartupIfNeeded:
 
         calls = {"addr": 0, "autor": 0, "idc": 0}
         monkeypatch.setattr(
-            db, "refresh_adresses_db",
+            db,
+            "refresh_adresses_db",
             lambda url, **kw: calls.__setitem__("addr", calls["addr"] + 1) or 1,
         )
         monkeypatch.setattr(
-            db, "refresh_autorizations_db",
+            db,
+            "refresh_autorizations_db",
             lambda **kw: calls.__setitem__("autor", calls["autor"] + 1) or 1,
         )
         monkeypatch.setattr(
-            db, "refresh_idc_db",
+            db,
+            "refresh_idc_db",
             lambda url, **kw: calls.__setitem__("idc", calls["idc"] + 1) or 1,
         )
 
