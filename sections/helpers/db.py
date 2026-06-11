@@ -4,6 +4,7 @@ import json
 import logging
 import sqlite3
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -18,10 +19,15 @@ logger.setLevel(logging.INFO)
 
 DB_PATH = Path(__file__).parent.parent.parent / "idc_local.db"
 _write_lock = threading.Lock()
-# Serialise the startup refresh across concurrent script runs in the same process
-# (multiple sessions, reconnects, or the cookie-manager's initial rerun) so the
-# full download runs once, not once per run that races the timestamp write.
+# The startup refresh runs in a single background daemon thread, decoupled from
+# the Streamlit script-run lifecycle. A Streamlit rerun (e.g. the cookie-manager's
+# initial rerun) can interrupt the main script mid-refresh; running the work in a
+# thread means it keeps going and finishes once. _refresh_lock guards the
+# start/attach decision so concurrent runs share the SAME thread instead of each
+# launching its own.
 _refresh_lock = threading.Lock()
+_refresh_thread: threading.Thread | None = None
+_refresh_state: dict | None = None
 
 
 def _get_conn() -> sqlite3.Connection:
@@ -579,65 +585,62 @@ def _refresh_needed(refresh_interval: timedelta) -> bool:
     return addr_empty or autor_empty or idc_empty or is_stale
 
 
-def refresh_db_at_startup_if_needed(
-    addresses_url: str,
-    refresh_interval: timedelta = timedelta(days=1),
-    progress_bar=None,
-    status_text=None,
-) -> bool:
+def _split_progress(bar, offset: float, span: float):
+    """Return a progress proxy mapping local [0,1] into global [offset, offset+span]."""
+    if bar is None:
+        return None
+
+    class _Bar:
+        def progress(self, v):
+            bar.progress(min(offset + v * span, 1.0))
+
+    return _Bar()
+
+
+class _StateBar:
+    """progress_bar-like proxy that records progress into a shared state dict."""
+
+    def __init__(self, state: dict):
+        self._state = state
+
+    def progress(self, v: float) -> None:
+        self._state["progress"] = max(0.0, min(v, 1.0))
+
+
+class _StateStatus:
+    """status_text-like proxy that records the latest message into a state dict."""
+
+    def __init__(self, state: dict):
+        self._state = state
+
+    def caption(self, msg: str) -> None:
+        self._state["message"] = msg
+
+
+def _do_full_refresh(addresses_url: str, state: dict) -> None:
+    """Run the three refreshes + timestamp write. Executes in a background thread.
+
+    Must not call any st.* UI functions (no ScriptRunContext here): progress is
+    reported through the shared ``state`` dict, which the main script mirrors
+    into the real Streamlit widgets.
     """
-    Refresh local caches at startup if they are empty or stale.
-    Returns True if a refresh was executed, False otherwise.
+    bar = _StateBar(state)
+    status = _StateStatus(state)
+    idc_bar = _split_progress(bar, 0.0, 1 / 3)
+    autor_bar = _split_progress(bar, 1 / 3, 1 / 3)
+    addr_bar = _split_progress(bar, 2 / 3, 1 / 3)
 
-    Uses double-checked locking so that when several script runs start at once
-    (multiple sessions, a reconnect, or the cookie-manager rerun) the heavy
-    download runs only once: the first run holds _refresh_lock and refreshes,
-    the others block then re-check the gate — which is now fresh — and skip.
-    """
-    init_metadata_table()
-
-    # Fast path, no lock: already fresh → nothing to do.
-    if not _refresh_needed(refresh_interval):
-        return False
-
-    with _refresh_lock:
-        # Re-check inside the lock: another run may have just finished refreshing
-        # while we were waiting to acquire it.
-        if not _refresh_needed(refresh_interval):
-            return False
+    try:
+        # IDC first — the addresses table is derived from idc_data, so it must
+        # be populated before refresh_adresses_db runs.
+        refresh_idc_db(addresses_url, progress_bar=idc_bar, status_text=status)
+        load_idc_by_egids.clear()
+        refresh_autorizations_db(progress_bar=autor_bar, status_text=status)
+        load_autorizations_by_egids.clear()
+        refresh_adresses_db(addresses_url, progress_bar=addr_bar, status_text=status)
+        get_all_addresses.clear()
 
         now = datetime.now(timezone.utc)
-
-        def _split_progress(bar, offset: float, span: float):
-            """Return a progress callable mapping [0,1] into [offset, offset+span]."""
-            if bar is None:
-                return None
-
-            class _Bar:
-                def progress(self, v):
-                    bar.progress(min(offset + v * span, 1.0))
-
-            return _Bar()
-
-        idc_bar = _split_progress(progress_bar, 0.0, 1 / 3)
-        autor_bar = _split_progress(progress_bar, 1 / 3, 1 / 3)
-        addr_bar = _split_progress(progress_bar, 2 / 3, 1 / 3)
-
-        try:
-            # IDC first — the addresses table is derived from idc_data, so it must
-            # be populated before refresh_adresses_db runs.
-            refresh_idc_db(addresses_url, progress_bar=idc_bar, status_text=status_text)
-            load_idc_by_egids.clear()
-            refresh_autorizations_db(progress_bar=autor_bar, status_text=status_text)
-            load_autorizations_by_egids.clear()
-            refresh_adresses_db(
-                addresses_url, progress_bar=addr_bar, status_text=status_text
-            )
-            get_all_addresses.clear()
-        except Exception as exc:
-            logger.warning("Automatic startup DB refresh failed: %s", exc)
-            return False
-
         conn = _get_conn()
         try:
             with _write_lock:
@@ -652,7 +655,72 @@ def refresh_db_at_startup_if_needed(
                 conn.commit()
         finally:
             conn.close()
-        return True
+    except Exception as exc:
+        logger.warning("Automatic startup DB refresh failed: %s", exc)
+        state["error"] = str(exc)
+    finally:
+        state["progress"] = 1.0
+        state["done"] = True
+
+
+def refresh_db_at_startup_if_needed(
+    addresses_url: str,
+    refresh_interval: timedelta = timedelta(days=1),
+    progress_bar=None,
+    status_text=None,
+) -> bool:
+    """
+    Refresh local caches at startup if they are empty or stale.
+    Returns True if a refresh ran (successfully) this call, False otherwise.
+
+    The heavy download runs in a single background daemon thread so that a
+    Streamlit rerun (notably the cookie-manager's initial rerun) cannot interrupt
+    it half-way and trigger a second full refresh. Concurrent/re-entrant script
+    runs attach to the SAME thread and just mirror its progress; the timestamp is
+    written by the thread on completion, so the next run sees the cache as fresh.
+    """
+    global _refresh_thread, _refresh_state
+
+    init_metadata_table()
+
+    # Fast path, no lock: already fresh → nothing to do.
+    if not _refresh_needed(refresh_interval):
+        return False
+
+    with _refresh_lock:
+        if _refresh_thread is not None and _refresh_thread.is_alive():
+            # A refresh is already running (started by an earlier/concurrent run).
+            thread, state = _refresh_thread, _refresh_state
+        elif _refresh_needed(refresh_interval):
+            _refresh_state = {
+                "progress": 0.0,
+                "message": "",
+                "done": False,
+                "error": None,
+            }
+            _refresh_thread = threading.Thread(
+                target=_do_full_refresh,
+                args=(addresses_url, _refresh_state),
+                daemon=True,
+            )
+            _refresh_thread.start()
+            thread, state = _refresh_thread, _refresh_state
+        else:
+            # Another thread finished refreshing while we waited for the lock.
+            return False
+
+    # Mirror the background thread's progress into this run's widgets until done.
+    while thread.is_alive():
+        if progress_bar is not None:
+            progress_bar.progress(state["progress"])
+        if status_text is not None:
+            status_text.caption(state["message"])
+        time.sleep(0.2)
+    thread.join()
+
+    if progress_bar is not None:
+        progress_bar.progress(1.0)
+    return state.get("error") is None
 
 
 # ---------------------------------------------------------------------------
