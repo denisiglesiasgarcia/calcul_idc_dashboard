@@ -206,13 +206,7 @@ class TestRefreshIdcDb:
 
         assert count == 0
 
-<<<<<<< HEAD
-    def test_calls_fetch_all_with_idc_fields_and_geometry(
-        self, tmp_path, monkeypatch
-    ):
-=======
-    def test_calls_fetch_all_with_all_fields_and_geometry(self, tmp_path, monkeypatch):
->>>>>>> d9a0162332d51d6a3f8caaa916f88b8575231b49
+    def test_calls_fetch_all_with_idc_fields_and_geometry(self, tmp_path, monkeypatch):
         monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
         db.init_idc_table()
 

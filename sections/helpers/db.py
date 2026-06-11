@@ -346,9 +346,12 @@ def refresh_idc_db(
     raw_attrs = [f["attributes"] for f in features]
     geometries = [f.get("geometry") for f in features]
 
-    # Deduplicate: keep most recent date_saisie per (egid, annee), preserve original index
+    # Deduplicate: keep most recent date_saisie per (egid, annee), preserve original index.
+    # infer_schema_length=None scans all rows when inferring dtypes — required because
+    # nullable columns (e.g. agent_energetique_2/3) can be null for the first 100+ rows
+    # and only later carry a string, which would otherwise raise a schema/append error.
     df = (
-        pl.from_dicts(raw_attrs)
+        pl.from_dicts(raw_attrs, infer_schema_length=None)
         .select(_IDC_COLS)
         .with_columns(pl.Series("_idx", range(len(raw_attrs))))
         .sort(["egid", "annee", "date_saisie"], descending=[False, False, True])
@@ -466,7 +469,8 @@ def load_idc_by_egids(
         data_attrs.append(d)
 
     try:
-        df = pl.from_dicts(data_attrs).with_columns(
+        # infer_schema_length=None: same nullable-column inference guard as refresh_idc_db.
+        df = pl.from_dicts(data_attrs, infer_schema_length=None).with_columns(
             [
                 pl.col("date_debut_periode").cast(pl.Datetime("ms")),
                 pl.col("date_fin_periode").cast(pl.Datetime("ms")),
