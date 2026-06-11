@@ -2087,7 +2087,7 @@ wheels = [
 [[package]]
 name = "sitg-api"
 version = "0.1.5"
-source = { git = "https://github.com/denisiglesiasgarcia/sitg-api#f4850cd43c0baef0d248fa8453781d98aaf5c8df" }
+source = { git = "https://github.com/denisiglesiasgarcia/sitg-api#eb088113a7fdb44164085b481c2088253f8fc80d" }
 dependencies = [
     { name = "dataframely" },
     { name = "geopandas" },
