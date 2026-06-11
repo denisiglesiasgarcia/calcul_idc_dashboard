@@ -9,7 +9,9 @@ from sections.helpers.db import (
     get_all_addresses,
     init_adresses_table,
     init_autorizations_table,
+    init_idc_table,
     load_autorizations_by_egids,
+    load_idc_by_egids,
     refresh_db_at_startup_if_needed,
 )
 from sections.helpers.user_data import (
@@ -21,7 +23,6 @@ from sections.helpers.user_data import (
     save_favorite,
     save_history_entry,
 )
-from sections.helpers.idc_api import fetch_idc_data
 from sections.helpers.idc_charts import create_barplot
 from sections.helpers.idc_geo import convert_geometry_for_streamlit, show_map
 from sections.helpers.idc_tables import show_dataframe, show_kpis
@@ -54,6 +55,7 @@ init_cookie_manager()
 # Init DB au démarrage, session_state uniquement pour le reload sidebar
 init_adresses_table()
 init_autorizations_table()
+init_idc_table()
 
 _startup_placeholder = st.empty()
 with _startup_placeholder.container():
@@ -349,26 +351,14 @@ if selected_options:
 try:
     if selected_options and len(st.session_state.get("data_verif_idc", [])) > 0:
         egids = st.session_state["data_verif_idc"]["egid"].to_list()
-        # ------------------------------------------------------------------
-        # API cache in session_state — avoids re-fetching when the user only
-        # toggles a checkbox or adjusts a sidebar parameter.
-        # The cache is invalidated whenever the selected EGID set changes.
-        # ------------------------------------------------------------------
-        cache_key = tuple(sorted(egids))
-        if st.session_state.get("_api_cache_key") != cache_key:
-            with st.spinner("Chargement des données SITG..."):
-                data_geometry, data_df = fetch_idc_data(
-                    egids, URL_INDICE_MOYENNES_3_ANS
-                )
-            st.session_state["_api_cache_key"] = cache_key
-            st.session_state["_api_geometry"] = data_geometry
-            st.session_state["_api_df"] = data_df
-        else:
-            data_geometry = st.session_state["_api_geometry"]
-            data_df = st.session_state["_api_df"]
+        egids_int = tuple(
+            sorted(int(e) for e in egids if e and e not in ("N/A", "", None))
+        )
+
+        data_geometry, data_df = load_idc_by_egids(egids_int)
 
         if not data_df:
-            st.error("Impossible de charger les données IDC depuis l'API SITG.")
+            st.error("Impossible de charger les données IDC depuis la base locale.")
             st.stop()
 
         geojson_data = None
@@ -380,7 +370,6 @@ try:
 
         # Load autorization records once here so they can feed both the KPI
         # row and the detailed table below without a second DB round-trip.
-        egids_int = tuple(int(e) for e in egids if e and e not in ("N/A", "", None))
         autor_records = load_autorizations_by_egids(egids_int) if egids_int else []
 
         # IDC sections — year_range-dependent, isolated so slider errors don't

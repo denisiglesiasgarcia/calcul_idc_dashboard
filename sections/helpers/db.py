@@ -1,5 +1,6 @@
 # /sections/helpers/db.py
 
+import json
 import logging
 import sqlite3
 import threading
@@ -85,6 +86,49 @@ def init_metadata_table() -> None:
                 key   TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             )
+        """)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def init_idc_table() -> None:
+    conn = _get_conn()
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS idc_data (
+                id                              INTEGER PRIMARY KEY AUTOINCREMENT,
+                egid                            INTEGER NOT NULL,
+                annee                           INTEGER,
+                indice                          INTEGER,
+                sre                             INTEGER,
+                adresse                         TEXT,
+                npa                             INTEGER,
+                commune                         TEXT,
+                destination                     TEXT,
+                agent_energetique_1             TEXT,
+                quantite_agent_energetique_1    REAL,
+                unite_agent_energetique_1       TEXT,
+                agent_energetique_2             TEXT,
+                quantite_agent_energetique_2    REAL,
+                unite_agent_energetique_2       TEXT,
+                agent_energetique_3             TEXT,
+                quantite_agent_energetique_3    REAL,
+                unite_agent_energetique_3       TEXT,
+                date_debut_periode              INTEGER,
+                date_fin_periode                INTEGER,
+                date_saisie                     INTEGER,
+                indice_moy2                     INTEGER,
+                annees_concernees_moy_2         TEXT,
+                indice_moy3                     INTEGER,
+                annees_concernees_moy_3         TEXT,
+                id_concessionnaire              INTEGER,
+                nbre_preneur                    INTEGER,
+                geometry_json                   TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_idc_data_egid ON idc_data (egid)
         """)
         conn.commit()
     finally:
@@ -216,6 +260,181 @@ def load_autorizations_by_egids(egids: tuple) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# IDC data cache
+# ---------------------------------------------------------------------------
+
+_IDC_COLS = [
+    "egid", "annee", "indice", "sre", "adresse", "npa", "commune", "destination",
+    "agent_energetique_1", "quantite_agent_energetique_1", "unite_agent_energetique_1",
+    "agent_energetique_2", "quantite_agent_energetique_2", "unite_agent_energetique_2",
+    "agent_energetique_3", "quantite_agent_energetique_3", "unite_agent_energetique_3",
+    "date_debut_periode", "date_fin_periode", "date_saisie",
+    "indice_moy2", "annees_concernees_moy_2", "indice_moy3", "annees_concernees_moy_3",
+    "id_concessionnaire", "nbre_preneur",
+]
+
+
+def refresh_idc_db(
+    url: str,
+    progress_bar=None,
+    status_text=None,
+) -> int:
+    """
+    Fetch all IDC data from SITG SCANE_INDICE_MOYENNES_3_ANS (with geometry)
+    and rebuild the local idc_data table.
+    Returns the number of records inserted.
+    """
+
+    def _status(msg: str) -> None:
+        if status_text is not None:
+            status_text.caption(msg)
+        logger.info(msg)
+
+    def _progress(value: float) -> None:
+        if progress_bar is not None:
+            progress_bar.progress(value)
+
+    _status("Connexion au SITG — récupération des données IDC...")
+    _progress(0.0)
+
+    features = fetch_all(
+        url,
+        fields="*",
+        with_geometry=True,
+        progress=False,
+        progress_cb=lambda f: _progress(f * 0.9),
+        status_cb=_status,
+    )
+
+    if not features:
+        _status("Aucune donnée IDC récupérée.")
+        return 0
+
+    _status(f"Dédoublonnage de {len(features):,} enregistrements IDC...")
+
+    raw_attrs = [f["attributes"] for f in features]
+    geometries = [f.get("geometry") for f in features]
+
+    # Deduplicate: keep most recent date_saisie per (egid, annee), preserve original index
+    df = (
+        pl.from_dicts(raw_attrs)
+        .select(_IDC_COLS)
+        .with_columns(pl.Series("_idx", range(len(raw_attrs))))
+        .sort(["egid", "annee", "date_saisie"], descending=[False, False, True])
+        .unique(subset=["egid", "annee"], keep="first")
+    )
+
+    rows = []
+    for row in df.to_dicts():
+        orig_idx = row.pop("_idx")
+        geom = geometries[orig_idx]
+        rows.append((
+            row["egid"], row["annee"], row["indice"], row["sre"],
+            row["adresse"], row["npa"], row["commune"], row["destination"],
+            row["agent_energetique_1"], row["quantite_agent_energetique_1"], row["unite_agent_energetique_1"],
+            row["agent_energetique_2"], row["quantite_agent_energetique_2"], row["unite_agent_energetique_2"],
+            row["agent_energetique_3"], row["quantite_agent_energetique_3"], row["unite_agent_energetique_3"],
+            row["date_debut_periode"], row["date_fin_periode"], row["date_saisie"],
+            row["indice_moy2"], row["annees_concernees_moy_2"],
+            row["indice_moy3"], row["annees_concernees_moy_3"],
+            row["id_concessionnaire"], row["nbre_preneur"],
+            json.dumps(geom) if geom else None,
+        ))
+
+    _status(f"Écriture de {len(rows):,} enregistrements IDC en base...")
+
+    conn = _get_conn()
+    try:
+        with _write_lock:
+            conn.execute("DELETE FROM idc_data")
+            conn.commit()
+
+            chunk = 1000
+            total_chunks = (len(rows) + chunk - 1) // chunk
+            for idx, i in enumerate(range(0, len(rows), chunk)):
+                conn.executemany(
+                    """
+                    INSERT INTO idc_data (
+                        egid, annee, indice, sre, adresse, npa, commune, destination,
+                        agent_energetique_1, quantite_agent_energetique_1, unite_agent_energetique_1,
+                        agent_energetique_2, quantite_agent_energetique_2, unite_agent_energetique_2,
+                        agent_energetique_3, quantite_agent_energetique_3, unite_agent_energetique_3,
+                        date_debut_periode, date_fin_periode, date_saisie,
+                        indice_moy2, annees_concernees_moy_2, indice_moy3, annees_concernees_moy_3,
+                        id_concessionnaire, nbre_preneur, geometry_json
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    rows[i : i + chunk],
+                )
+                conn.commit()
+                _progress(0.9 + ((idx + 1) / total_chunks) * 0.1)
+                _status(
+                    f"Écriture en base : {min(i + chunk, len(rows)):,} / {len(rows):,} enregistrements IDC"
+                )
+    finally:
+        conn.close()
+
+    _progress(1.0)
+    _status(f"Terminé — {len(rows):,} enregistrements IDC enregistrés.")
+    return len(rows)
+
+
+@st.cache_data(ttl=3600)
+def load_idc_by_egids(
+    egids: tuple[int, ...],
+) -> tuple[list[dict] | None, list[dict] | None]:
+    """
+    Load IDC data and geometry from local SQLite for the given EGIDs.
+    Returns (geometry_records, data_records) matching the fetch_idc_data interface.
+    """
+    if not egids:
+        return None, None
+
+    conn = _get_conn()
+    try:
+        placeholders = ",".join(["?"] * len(egids))
+        cur = conn.execute(
+            f"SELECT {', '.join(_IDC_COLS)}, geometry_json "
+            f"FROM idc_data WHERE egid IN ({placeholders}) ORDER BY egid, annee",
+            list(egids),
+        )
+        rows = cur.fetchall()
+        col_names = [d[0] for d in cur.description]
+    finally:
+        conn.close()
+
+    if not rows:
+        return None, None
+
+    geometry_records = []
+    data_attrs = []
+    for r in rows:
+        d = dict(zip(col_names, r))
+        geom_json = d.pop("geometry_json", None)
+        geom = json.loads(geom_json) if geom_json else None
+        geometry_records.append({"attributes": dict(d), "geometry": geom})
+        data_attrs.append(d)
+
+    try:
+        df = (
+            pl.from_dicts(data_attrs)
+            .with_columns([
+                pl.col("date_debut_periode").cast(pl.Datetime("ms")),
+                pl.col("date_fin_periode").cast(pl.Datetime("ms")),
+                pl.col("date_saisie").cast(pl.Datetime("ms")),
+                pl.col("npa").cast(pl.Int64),
+                pl.col("quantite_agent_energetique_1").cast(pl.Float64),
+                pl.col("quantite_agent_energetique_2").cast(pl.Float64),
+                pl.col("quantite_agent_energetique_3").cast(pl.Float64),
+            ])
+        )
+        return geometry_records, df.to_dicts()
+    except Exception as exc:
+        logger.error("load_idc_by_egids: failed to build DataFrame: %s", exc)
+        return None, None
+
+
+# ---------------------------------------------------------------------------
 # Address cache
 # ---------------------------------------------------------------------------
 
@@ -319,6 +538,9 @@ def refresh_db_at_startup_if_needed(
         autor_empty = (
             conn.execute("SELECT 1 FROM autorizations LIMIT 1").fetchone() is None
         )
+        idc_empty = (
+            conn.execute("SELECT 1 FROM idc_data LIMIT 1").fetchone() is None
+        )
     finally:
         conn.close()
 
@@ -333,7 +555,7 @@ def refresh_db_at_startup_if_needed(
             logger.warning("Invalid last_full_refresh_utc value in app_metadata.")
 
     is_stale = last_refresh is None or (now - last_refresh) >= refresh_interval
-    needs_refresh = addr_empty or autor_empty or is_stale
+    needs_refresh = addr_empty or autor_empty or idc_empty or is_stale
     if not needs_refresh:
         return False
 
@@ -348,8 +570,9 @@ def refresh_db_at_startup_if_needed(
 
         return _Bar()
 
-    addr_bar = _split_progress(progress_bar, 0.0, 0.5)
-    autor_bar = _split_progress(progress_bar, 0.5, 0.5)
+    addr_bar = _split_progress(progress_bar, 0.0, 1 / 3)
+    autor_bar = _split_progress(progress_bar, 1 / 3, 1 / 3)
+    idc_bar = _split_progress(progress_bar, 2 / 3, 1 / 3)
 
     try:
         refresh_adresses_db(
@@ -358,6 +581,8 @@ def refresh_db_at_startup_if_needed(
         get_all_addresses.clear()
         refresh_autorizations_db(progress_bar=autor_bar, status_text=status_text)
         load_autorizations_by_egids.clear()
+        refresh_idc_db(addresses_url, progress_bar=idc_bar, status_text=status_text)
+        load_idc_by_egids.clear()
     except Exception as exc:
         logger.warning("Automatic startup DB refresh failed: %s", exc)
         return False
