@@ -78,8 +78,20 @@ def load_history(n: int = 20) -> list[dict]:
 
 
 def save_history_entry(selected_options: list[str]) -> None:
-    """Append a new history entry; skips exact duplicates; caps list at _MAX_HISTORY."""
+    """Append a new history entry; skips exact duplicates; caps list at _MAX_HISTORY.
+
+    Called on every rerun while a selection is active. The cookie read can lag the
+    write on Streamlit Cloud, so a cookie-only dedupe would re-save (and re-trigger
+    a rerun) every run — an infinite reload loop. We guard with session_state so a
+    given selection is written at most once per session, independent of cookie I/O.
+    """
     labels = sorted(selected_options)
+    if not labels:
+        return
+    if st.session_state.get("_last_saved_history") == labels:
+        return
+    st.session_state["_last_saved_history"] = labels
+
     entries = _load(_COOKIE_HISTORY)
     if any(e.get("labels") == labels for e in entries):
         return
