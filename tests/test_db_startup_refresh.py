@@ -185,7 +185,9 @@ class TestRefreshDbAtStartupIfNeeded:
         _init_all_tables()
         _set_last_refresh(
             db.DB_PATH,
-            datetime.now(timezone.utc) - db._EMPTY_RETRY_COOLDOWN - timedelta(minutes=1),
+            datetime.now(timezone.utc)
+            - db._EMPTY_RETRY_COOLDOWN
+            - timedelta(minutes=1),
         )
 
         calls = {"addr": 0, "autor": 0, "idc": 0}
