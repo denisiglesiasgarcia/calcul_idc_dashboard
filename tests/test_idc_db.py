@@ -210,7 +210,7 @@ class TestRefreshIdcDb:
 
         assert count == 0
 
-    def test_calls_fetch_all_with_all_fields_and_geometry(
+    def test_calls_fetch_all_with_idc_fields_and_geometry(
         self, tmp_path, monkeypatch
     ):
         monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
@@ -225,7 +225,8 @@ class TestRefreshIdcDb:
         monkeypatch.setattr(db, "fetch_all", _fake_fetch_all)
         db.refresh_idc_db("http://fake")
 
-        assert captured.get("fields") == "*"
+        # Explicit outFields (only the stored columns), not "*"
+        assert captured.get("fields") == ",".join(db._IDC_COLS)
         assert captured.get("with_geometry") is True
 
 

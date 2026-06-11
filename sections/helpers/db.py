@@ -22,7 +22,15 @@ _write_lock = threading.Lock()
 
 def _get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+    # WAL + relaxed durability: safe with WAL and much faster for the bulk
+    # truncate/reinsert refresh cycle. busy_timeout avoids "database is locked"
+    # errors when several Streamlit sessions touch the WAL concurrently.
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA temp_store=MEMORY")
+    conn.execute("PRAGMA cache_size=-65536")  # ~64 MB page cache
+    conn.execute("PRAGMA mmap_size=268435456")  # 256 MB memory-mapped I/O
+    conn.execute("PRAGMA busy_timeout=5000")  # ms
     return conn
 
 
@@ -299,8 +307,12 @@ def refresh_idc_db(
 
     features = fetch_all(
         url,
-        fields="*",
+        # Request only the columns we store instead of "*": smaller payload,
+        # faster JSON parse. Geometry is controlled separately via with_geometry.
+        fields=",".join(_IDC_COLS),
         with_geometry=True,
+        max_workers=8,
+        response_format="pbf",
         progress=False,
         progress_cb=lambda f: _progress(f * 0.9),
         status_cb=_status,
@@ -440,12 +452,17 @@ def load_idc_by_egids(
 
 
 def refresh_adresses_db(
-    url: str,
+    url: str | None = None,
     progress_bar=None,
     status_text=None,
 ) -> int:
     """
-    Fetch all address/EGID pairs from SITG and rebuild the local SQLite table.
+    Rebuild the adresses_egid table from the local idc_data table.
+
+    Addresses come from the same SITG layer (SCANE_INDICE_MOYENNES_3_ANS) as the
+    IDC data, so they are derived locally from idc_data after refresh_idc_db has
+    populated it — avoiding a second full download of the layer. ``url`` is kept
+    for backwards compatibility but is no longer used.
     """
 
     def _status(msg: str) -> None:
@@ -457,55 +474,24 @@ def refresh_adresses_db(
         if progress_bar is not None:
             progress_bar.progress(value)
 
-    _status("Connexion au SITG — récupération des adresses...")
+    _status("Construction des adresses depuis les données IDC locales...")
     _progress(0.0)
-
-    features = fetch_all(
-        url,
-        fields="adresse,egid",
-        with_geometry=False,
-        progress=False,
-        progress_cb=lambda f: _progress(f * 0.9),
-        status_cb=_status,
-    )
-    all_records = [
-        (f["attributes"]["egid"], f["attributes"]["adresse"])
-        for f in features
-        if f["attributes"].get("egid") and f["attributes"].get("adresse")
-    ]
-
-    _status("Dédoublonnage et écriture en base...")
-    df = (
-        pl.DataFrame(
-            {
-                "egid": [r[0] for r in all_records],
-                "adresse": [r[1] for r in all_records],
-            }
-        )
-        .unique()
-        .sort("adresse")
-    )
-    unique_records = df.rows()
 
     conn = _get_conn()
     try:
+        unique_records = conn.execute(
+            "SELECT DISTINCT egid, adresse FROM idc_data "
+            "WHERE egid IS NOT NULL AND adresse IS NOT NULL AND adresse <> '' "
+            "ORDER BY adresse"
+        ).fetchall()
+
         with _write_lock:
             conn.execute("DELETE FROM adresses_egid")
+            conn.executemany(
+                "INSERT OR IGNORE INTO adresses_egid (egid, adresse) VALUES (?,?)",
+                unique_records,
+            )
             conn.commit()
-
-            chunk = 1000
-            total_chunks = (len(unique_records) + chunk - 1) // chunk
-            for idx, i in enumerate(range(0, len(unique_records), chunk)):
-                conn.executemany(
-                    "INSERT OR IGNORE INTO adresses_egid (egid, adresse) VALUES (?,?)",
-                    unique_records[i : i + chunk],
-                )
-                conn.commit()
-                write_frac = (idx + 1) / total_chunks
-                _progress(0.9 + write_frac * 0.1)
-                _status(
-                    f"Écriture en base : {min(i + chunk, len(unique_records)):,} / {len(unique_records):,} adresses"
-                )
     finally:
         conn.close()
 
@@ -570,19 +556,21 @@ def refresh_db_at_startup_if_needed(
 
         return _Bar()
 
-    addr_bar = _split_progress(progress_bar, 0.0, 1 / 3)
+    idc_bar = _split_progress(progress_bar, 0.0, 1 / 3)
     autor_bar = _split_progress(progress_bar, 1 / 3, 1 / 3)
-    idc_bar = _split_progress(progress_bar, 2 / 3, 1 / 3)
+    addr_bar = _split_progress(progress_bar, 2 / 3, 1 / 3)
 
     try:
+        # IDC first — the addresses table is derived from idc_data, so it must
+        # be populated before refresh_adresses_db runs.
+        refresh_idc_db(addresses_url, progress_bar=idc_bar, status_text=status_text)
+        load_idc_by_egids.clear()
+        refresh_autorizations_db(progress_bar=autor_bar, status_text=status_text)
+        load_autorizations_by_egids.clear()
         refresh_adresses_db(
             addresses_url, progress_bar=addr_bar, status_text=status_text
         )
         get_all_addresses.clear()
-        refresh_autorizations_db(progress_bar=autor_bar, status_text=status_text)
-        load_autorizations_by_egids.clear()
-        refresh_idc_db(addresses_url, progress_bar=idc_bar, status_text=status_text)
-        load_idc_by_egids.clear()
     except Exception as exc:
         logger.warning("Automatic startup DB refresh failed: %s", exc)
         return False
