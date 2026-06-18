@@ -427,9 +427,6 @@ try:
                 else:
                     st.info("Géométrie non disponible pour ces bâtiments.")
 
-            st.subheader("Caractéristiques des bâtiments")
-            show_batiments_table(batiment_records)
-
             st.subheader("Historique IDC")
             adresses_titre = st.session_state["data_verif_idc"]["adresse"].to_list()
             title = ", ".join(adresses_titre)
@@ -519,6 +516,11 @@ try:
                     "Aucun dossier d'autorisation trouvé pour ces bâtiments. "
                     "Les données sont mises à jour automatiquement au démarrage puis chaque jour."
                 )
+
+        # Caractéristiques des bâtiments — independent of year_range slider
+        st.divider()
+        st.subheader("Caractéristiques des bâtiments")
+        show_batiments_table(batiment_records)
     else:
         st.warning(
             "Veuillez renseigner une ou plusieurs adresses pour afficher \
