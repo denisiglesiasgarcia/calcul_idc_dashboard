@@ -41,12 +41,13 @@ uv run streamlit run main.py
 ### Visualisations
 
 - Graphique en barres de l'évolution de l'IDC par année
-- Plan de situation OpenStreetMap
+- Plan de situation OpenStreetMap (infobulle enrichie des caractéristiques du bâtiment : construction, niveaux, hauteur, emprise, destination)
 - Données tabulaires
   - Toutes les données
   - IDC pondéré par année (cas plusieurs bâtiments) avec variations
   - Agents énergétiques par année et par bâtiment (en jaune/gras si changement)
   - Surface de référence énergétique par année et bâtiment (en jaune/gras si changement)
+  - Caractéristiques des bâtiments (CAD_BATIMENT_HORSOL) : époque/année de construction, transformation, niveaux hors-sol/sous-sol, hauteur, emprise au sol, destination
   - Autorisations de construire (jointure spatiale entre le point du dossier et le polygone associé à l'EGID)
 
 ### Indicateurs clés (KPIs)

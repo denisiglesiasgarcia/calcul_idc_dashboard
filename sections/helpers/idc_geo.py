@@ -49,8 +49,17 @@ def convert_geometry_for_streamlit(data: List[Dict]) -> Tuple:
     return geojson, centroid
 
 
-def show_map(data: List[Dict], centroid: Tuple[float, float]) -> None:
-    """Render a PyDeck GeoJSON map centred on the selected buildings."""
+def show_map(
+    data: List[Dict],
+    centroid: Tuple[float, float],
+    batiments_by_egid: Dict | None = None,
+) -> None:
+    """Render a PyDeck GeoJSON map centred on the selected buildings.
+
+    ``batiments_by_egid`` optionally maps EGID → CAD_BATIMENT_HORSOL record;
+    when provided, its descriptive attributes are added to the hover tooltip.
+    """
+    batiments_by_egid = batiments_by_egid or {}
 
     # Couleur dynamique selon IDC : vert (bas) → rouge (élevé)
     # Si IDC absent, fallback sur rouge neutre
@@ -64,11 +73,51 @@ def show_map(data: List[Dict], centroid: Tuple[float, float]) -> None:
         g = int(200 - t * 180)  # 200 → 20
         return [r, g, 50, 200]
 
-    # Injecte la couleur dans chaque feature pour GeoJsonLayer
+    # Construit le bloc HTML des caractéristiques bâtiment (CAD_BATIMENT_HORSOL)
+    # pour l'infobulle, ou une chaîne vide si l'EGID n'a pas de fiche bâtiment.
+    def _batiment_html(props: Dict) -> str:
+        egid = props.get("egid")
+        bat = batiments_by_egid.get(egid) or batiments_by_egid.get(str(egid))
+        if not bat:
+            return ""
+        parts = []
+        annee = bat.get("annee_construction")
+        epoque = bat.get("epoque_construction")
+        if annee:
+            parts.append(f"<b>Construction :</b> {annee}")
+        elif epoque:
+            parts.append(f"<b>Construction :</b> {epoque}")
+        if bat.get("annee_transformation"):
+            parts.append(f"<b>Transformation :</b> {bat['annee_transformation']}")
+        niv_hs = bat.get("niveaux_horsol")
+        niv_ss = bat.get("niveaux_ssol")
+        if niv_hs is not None or niv_ss is not None:
+            parts.append(
+                f"<b>Niveaux :</b> {niv_hs if niv_hs is not None else '?'} h-sol"
+                f" / {niv_ss if niv_ss is not None else '?'} s-sol"
+            )
+        if bat.get("hauteur"):
+            parts.append(f"<b>Hauteur :</b> {bat['hauteur']:.1f} m")
+        if bat.get("surface"):
+            parts.append(f"<b>Emprise :</b> {bat['surface']} m²")
+        if bat.get("destination"):
+            parts.append(f"<b>Destination :</b> {bat['destination']}")
+        if not parts:
+            return ""
+        return "<hr style='margin:4px 0'/>" + "<br/>".join(parts)
+
+    # Injecte la couleur et les infos bâtiment dans chaque feature pour GeoJsonLayer
     colored_data = {
         "type": "FeatureCollection",
         "features": [
-            {**f, "properties": {**f["properties"], "_color": _idc_to_color(f)}}
+            {
+                **f,
+                "properties": {
+                    **f["properties"],
+                    "_color": _idc_to_color(f),
+                    "_batiment_info": _batiment_html(f["properties"]),
+                },
+            }
             for f in data["features"]
         ],
     }
@@ -135,6 +184,7 @@ def show_map(data: List[Dict], centroid: Tuple[float, float]) -> None:
                 "<b>Agent 1 :</b> {agent_energetique_1} — {quantite_agent_energetique_1} {unite_agent_energetique_1}<br/>"
                 "{_agent_2_label}<br/>"
                 "{_agent_3_label}"
+                "{_batiment_info}"
             ),
             "style": {
                 "backgroundColor": "#1e1e2e",

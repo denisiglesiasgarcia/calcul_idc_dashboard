@@ -42,6 +42,28 @@ _AUTOR_FIELDS = ",".join(
 
 _BATIMENT_FIELDS = "EGID,COMMUNE"
 
+# Descriptive building attributes surfaced in the dashboard (no geometry needed —
+# the map reuses the IDC layer polygons). NB: ANNEE_TRANSFORNATION is the SITG
+# field name, misspelled at source; we expose it as `annee_transformation`.
+_BATIMENT_DETAIL_FIELDS = ",".join(
+    [
+        "EGID",
+        "COMMUNE",
+        "NO_BATIMENT",
+        "NOMBAT",
+        "DESTINATION",
+        "NOMENCLATURE",
+        "NOMEN_CLASSE",
+        "EPOQUE_CONSTRUCTION",
+        "ANNEE_CONSTRUCTION",
+        "ANNEE_TRANSFORNATION",
+        "NIVEAUX_HORSOL",
+        "NIVEAUX_SSOL",
+        "HAUTEUR",
+        "SURFACE",
+    ]
+)
+
 
 def _ms_to_iso(ms: int | None) -> str | None:
     if ms is None:
@@ -72,6 +94,73 @@ def _parse_polygon(geo: dict | None) -> Polygon | MultiPolygon | None:
         return MultiPolygon(polys) if len(polys) > 1 else polys[0]
     except (TypeError, ValueError):
         return None
+
+
+def fetch_batiments(
+    url_batiment: str = URL_BATIMENT_HORSOL,
+    progress_cb: Callable[[float], None] | None = None,
+    status_cb: Callable[[str], None] | None = None,
+) -> list[dict]:
+    """
+    Fetch CAD_BATIMENT_HORSOL building characteristics keyed by EGID.
+
+    Geometry is not requested: the dashboard reuses the IDC layer polygons for
+    mapping, so this layer only contributes descriptive attributes (construction
+    period, levels, height, footprint area, destination…). When several polygons
+    share an EGID, the one with the largest SURFACE is kept.
+
+    Returns a list of dicts with keys matching the `batiments` DB table.
+    """
+    if status_cb:
+        status_cb("Chargement des caractéristiques des bâtiments SITG...")
+
+    features = fetch_all(
+        url_batiment,
+        fields=_BATIMENT_DETAIL_FIELDS,
+        with_geometry=False,
+        max_workers=8,
+        response_format="pbf",
+        progress=False,
+        progress_cb=progress_cb,
+        status_cb=status_cb,
+    )
+
+    if not features:
+        logger.warning("Aucun bâtiment retourné par le SITG")
+        return []
+
+    by_egid: dict[int, dict] = {}
+    for f in features:
+        a = f["attributes"]
+        egid = a.get("EGID")
+        if egid is None:
+            continue
+        surface = a.get("SURFACE") or 0
+        existing = by_egid.get(egid)
+        # Keep the largest footprint when several polygons share an EGID.
+        if existing is not None and (existing.get("surface") or 0) >= surface:
+            continue
+        by_egid[egid] = {
+            "egid": egid,
+            "commune": a.get("COMMUNE"),
+            "no_batiment": a.get("NO_BATIMENT"),
+            "nombat": a.get("NOMBAT"),
+            "destination": a.get("DESTINATION"),
+            "nomenclature": a.get("NOMENCLATURE"),
+            "nomen_classe": a.get("NOMEN_CLASSE"),
+            "epoque_construction": a.get("EPOQUE_CONSTRUCTION"),
+            "annee_construction": a.get("ANNEE_CONSTRUCTION"),
+            "annee_transformation": a.get("ANNEE_TRANSFORNATION"),
+            "niveaux_horsol": a.get("NIVEAUX_HORSOL"),
+            "niveaux_ssol": a.get("NIVEAUX_SSOL"),
+            "hauteur": a.get("HAUTEUR"),
+            "surface": a.get("SURFACE"),
+        }
+
+    records = list(by_egid.values())
+    if status_cb:
+        status_cb(f"{len(records):,} bâtiments chargés depuis le SITG.")
+    return records
 
 
 def fetch_and_join_autorizations(

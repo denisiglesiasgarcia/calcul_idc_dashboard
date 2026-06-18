@@ -15,8 +15,10 @@ from sections.helpers.db import (
     get_all_addresses,
     init_adresses_table,
     init_autorizations_table,
+    init_batiments_table,
     init_idc_table,
     load_autorizations_by_egids,
+    load_batiments_by_egids,
     load_idc_by_egids,
     refresh_db_at_startup_if_needed,
 )
@@ -31,7 +33,11 @@ from sections.helpers.user_data import (
 )
 from sections.helpers.idc_charts import create_barplot
 from sections.helpers.idc_geo import convert_geometry_for_streamlit, show_map
-from sections.helpers.idc_tables import show_dataframe, show_kpis
+from sections.helpers.idc_tables import (
+    show_batiments_table,
+    show_dataframe,
+    show_kpis,
+)
 
 # Active les logs sitg_api une fois par session (loguru, heure locale).
 if configure_logging is not None and "_logging_configured" not in st.session_state:
@@ -66,6 +72,7 @@ init_cookie_manager()
 # Init DB au démarrage, session_state uniquement pour le reload sidebar
 init_adresses_table()
 init_autorizations_table()
+init_batiments_table()
 init_idc_table()
 
 _startup_placeholder = st.empty()
@@ -396,20 +403,32 @@ try:
         # row and the detailed table below without a second DB round-trip.
         autor_records = load_autorizations_by_egids(egids_int) if egids_int else []
 
+        # Building characteristics (CAD_BATIMENT_HORSOL) — feeds the map tooltip
+        # and the dedicated "Caractéristiques des bâtiments" table below.
+        batiment_records = load_batiments_by_egids(egids_int) if egids_int else []
+        batiments_by_egid = {r["egid"]: r for r in batiment_records}
+
         # IDC sections — year_range-dependent, isolated so slider errors don't
         # prevent the autorizations section below from rendering.
         try:
             st.subheader("Chiffres-clé")
             show_kpis(
-                data_df, seuil=seuil, year_range=year_range, autor_records=autor_records
+                data_df,
+                seuil=seuil,
+                year_range=year_range,
+                autor_records=autor_records,
+                batiment_records=batiment_records,
             )
 
             st.subheader("Plan de situation")
             with st.expander("Afficher la carte", expanded=True):
                 if geojson_data is not None and centroid is not None:
-                    show_map(geojson_data, centroid)
+                    show_map(geojson_data, centroid, batiments_by_egid)
                 else:
                     st.info("Géométrie non disponible pour ces bâtiments.")
+
+            st.subheader("Caractéristiques des bâtiments")
+            show_batiments_table(batiment_records)
 
             st.subheader("Historique IDC")
             adresses_titre = st.session_state["data_verif_idc"]["adresse"].to_list()

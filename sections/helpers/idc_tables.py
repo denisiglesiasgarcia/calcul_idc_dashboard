@@ -484,6 +484,7 @@ def show_kpis(
     seuil: int = 450,
     year_range: tuple[int, int] | None = None,
     autor_records: list[dict] | None = None,
+    batiment_records: list[dict] | None = None,
 ) -> None:
 
     df = pl.from_dicts(data_df).with_columns(
@@ -748,3 +749,171 @@ def show_kpis(
                 value=str(n_agr) if n_agr > 0 else "Aucune",
                 help='Dossiers dont le type d\'opération est "AGR".',
             )
+
+    # ── Ligne 3 : Caractéristiques des bâtiments (CAD_BATIMENT_HORSOL) ─────────
+    if batiment_records:
+        _show_batiment_kpis(batiment_records)
+
+
+def _show_batiment_kpis(batiment_records: list[dict]) -> None:
+    """
+    KPI row summarising the building characteristics layer for the selected EGIDs.
+
+    Destination and construction period are the attributes most relevant to an IDC
+    reading (building use and age strongly shape expected heat demand); total
+    footprint gives the physical scale of the selection.
+    """
+    # Destination — predominant use, with the full set of distinct uses in help.
+    destinations = [r.get("destination") for r in batiment_records if r.get("destination")]
+    distinct_dest = sorted(set(destinations))
+    if not distinct_dest:
+        dest_value, dest_help = "N/A", "Destination non renseignée."
+    elif len(distinct_dest) == 1:
+        dest_value, dest_help = distinct_dest[0], "Destination des bâtiments sélectionnés."
+    else:
+        # Most frequent destination as the headline, full list in the tooltip.
+        predominant = max(distinct_dest, key=destinations.count)
+        dest_value = f"{predominant} (+{len(distinct_dest) - 1})"
+        dest_help = "Destinations présentes : " + ", ".join(distinct_dest)
+
+    # Construction period — year range, falling back to the textual epoch.
+    annees = [r.get("annee_construction") for r in batiment_records if r.get("annee_construction")]
+    if annees:
+        a_min, a_max = min(annees), max(annees)
+        constr_value = str(a_min) if a_min == a_max else f"{a_min}–{a_max}"
+        constr_help = "Année de construction (min–max des bâtiments sélectionnés)."
+    else:
+        epoques = sorted({r.get("epoque_construction") for r in batiment_records if r.get("epoque_construction")})
+        if not epoques:
+            constr_value, constr_help = "N/A", "Année de construction non renseignée."
+        elif len(epoques) == 1:
+            constr_value, constr_help = epoques[0], "Époque de construction."
+        else:
+            constr_value = f"{len(epoques)} époques"
+            constr_help = "Époques présentes : " + ", ".join(epoques)
+
+    # Total ground footprint (m²) — physical extent of the selection.
+    surfaces = [r.get("surface") for r in batiment_records if r.get("surface")]
+    emprise = sum(surfaces) if surfaces else None
+    emprise_value = f"{emprise:,.0f} m²".replace(",", "'") if emprise else "N/A"
+
+    def _range_value(key: str, unit: str = "", decimals: int = 0) -> str:
+        """Format the min–max of a numeric building attribute over the selection."""
+        vals = [r.get(key) for r in batiment_records if r.get(key) is not None]
+        if not vals:
+            return "N/A"
+        lo, hi = min(vals), max(vals)
+        fmt = f"{{:.{decimals}f}}"
+        suffix = f" {unit}" if unit else ""
+        if lo == hi:
+            return f"{fmt.format(lo)}{suffix}"
+        return f"{fmt.format(lo)}–{fmt.format(hi)}{suffix}"
+
+    niveaux_hs_value = _range_value("niveaux_horsol")
+    niveaux_ss_value = _range_value("niveaux_ssol")
+    hauteur_value = _range_value("hauteur", unit="m", decimals=1)
+
+    col_b1, col_b2, col_b3, col_b4, col_b5, col_b6 = st.columns(6)
+    with col_b1:
+        st.metric(label="Destination", value=dest_value, help=dest_help)
+    with col_b2:
+        st.metric(label="Construction", value=constr_value, help=constr_help)
+    with col_b3:
+        st.metric(
+            label="Emprise au sol totale",
+            value=emprise_value,
+            help=(
+                f"Somme de l'emprise au sol de {len(surfaces)} bâtiment(s). "
+                "À distinguer de la SRE (surface de référence énergétique)."
+            ),
+        )
+    with col_b4:
+        st.metric(
+            label="Niveaux hors-sol",
+            value=niveaux_hs_value,
+            help="Nombre de niveaux hors-sol (min–max des bâtiments sélectionnés).",
+        )
+    with col_b5:
+        st.metric(
+            label="Niveaux sous-sol",
+            value=niveaux_ss_value,
+            help="Nombre de niveaux en sous-sol (min–max des bâtiments sélectionnés).",
+        )
+    with col_b6:
+        st.metric(
+            label="Hauteur",
+            value=hauteur_value,
+            help="Hauteur du bâtiment (min–max des bâtiments sélectionnés).",
+        )
+
+
+# Ordered (column, label) pairs for the building characteristics table.
+_BATIMENT_DISPLAY = [
+    ("egid", "EGID"),
+    ("nombat", "Nom"),
+    ("no_batiment", "N° bâtiment"),
+    ("commune", "Commune"),
+    ("destination", "Destination"),
+    ("nomenclature", "Nomenclature"),
+    ("nomen_classe", "Classe"),
+    ("epoque_construction", "Époque construction"),
+    ("annee_construction", "Année construction"),
+    ("annee_transformation", "Année transformation"),
+    ("niveaux_horsol", "Niveaux hors-sol"),
+    ("niveaux_ssol", "Niveaux sous-sol"),
+    ("hauteur", "Hauteur"),
+    ("surface", "Emprise au sol"),
+]
+
+
+def show_batiments_table(batiment_records: list[dict]) -> None:
+    """
+    Affiche les caractéristiques des bâtiments (couche SITG CAD_BATIMENT_HORSOL)
+    pour les EGID sélectionnés : époque/année de construction, niveaux, hauteur,
+    emprise au sol, destination, etc.
+    """
+    if not batiment_records:
+        st.info(
+            "Aucune donnée bâtiment (CAD_BATIMENT_HORSOL) trouvée pour ces EGID. "
+            "Les données sont mises à jour automatiquement au démarrage puis chaque jour."
+        )
+        return
+
+    df = pl.from_dicts(batiment_records)
+    cols = [c for c, _ in _BATIMENT_DISPLAY if c in df.columns]
+    df_display = df.select(cols)
+
+    col_cfg = {
+        "egid": st.column_config.TextColumn("EGID"),
+        "annee_construction": st.column_config.NumberColumn(
+            "Année construction", format="%d"
+        ),
+        "annee_transformation": st.column_config.NumberColumn(
+            "Année transformation", format="%d"
+        ),
+        "niveaux_horsol": st.column_config.NumberColumn(
+            "Niveaux hors-sol", format="%d"
+        ),
+        "niveaux_ssol": st.column_config.NumberColumn("Niveaux sous-sol", format="%d"),
+        "hauteur": st.column_config.NumberColumn("Hauteur", format="%.1f m"),
+        "surface": st.column_config.NumberColumn("Emprise au sol", format="%d m²"),
+    }
+    # Friendly labels for the remaining (text) columns.
+    for col, label in _BATIMENT_DISPLAY:
+        col_cfg.setdefault(col, st.column_config.TextColumn(label))
+
+    st.caption(f"{len(df_display):,} bâtiment(s) — source SITG CAD_BATIMENT_HORSOL.")
+    st.dataframe(
+        df_display.to_pandas(),
+        column_config=col_cfg,
+        width="stretch",
+        hide_index=True,
+    )
+
+    st.download_button(
+        label="📥 Télécharger batiments.xlsx",
+        data=convert_df_to_excel(df_display.to_pandas()),
+        file_name="batiments.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=False,
+    )

@@ -12,7 +12,7 @@ import polars as pl
 import streamlit as st
 from sitg_api import fetch_all
 
-from sections.helpers.autor_api import fetch_and_join_autorizations
+from sections.helpers.autor_api import fetch_and_join_autorizations, fetch_batiments
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -94,6 +94,32 @@ def init_autorizations_table() -> None:
         """)
         conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_autorizations_egid ON autorizations (egid)
+        """)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def init_batiments_table() -> None:
+    conn = _get_conn()
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS batiments (
+                egid                 INTEGER PRIMARY KEY,
+                commune              TEXT,
+                no_batiment          TEXT,
+                nombat               TEXT,
+                destination          TEXT,
+                nomenclature         TEXT,
+                nomen_classe         TEXT,
+                epoque_construction  TEXT,
+                annee_construction   INTEGER,
+                annee_transformation INTEGER,
+                niveaux_horsol       INTEGER,
+                niveaux_ssol         INTEGER,
+                hauteur              REAL,
+                surface              INTEGER
+            )
         """)
         conn.commit()
     finally:
@@ -279,6 +305,104 @@ def load_autorizations_by_egids(egids: tuple) -> list[dict]:
         "date_maj",
     ]
     return [dict(zip(cols, r)) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Buildings (CAD_BATIMENT_HORSOL) cache
+# ---------------------------------------------------------------------------
+
+_BATIMENT_COLS = [
+    "egid",
+    "commune",
+    "no_batiment",
+    "nombat",
+    "destination",
+    "nomenclature",
+    "nomen_classe",
+    "epoque_construction",
+    "annee_construction",
+    "annee_transformation",
+    "niveaux_horsol",
+    "niveaux_ssol",
+    "hauteur",
+    "surface",
+]
+
+
+def refresh_batiments_db(
+    progress_bar=None,
+    status_text=None,
+) -> int:
+    """
+    Full ETL: fetch CAD_BATIMENT_HORSOL building characteristics from SITG,
+    then truncate/insert into the local SQLite `batiments` table (one row per EGID).
+    Returns the number of records inserted.
+    """
+
+    def _status(msg: str) -> None:
+        if status_text is not None:
+            status_text.caption(msg)
+        logger.info(msg)
+
+    def _progress(value: float) -> None:
+        if progress_bar is not None:
+            progress_bar.progress(value)
+
+    records = fetch_batiments(
+        progress_cb=lambda f: _progress(f * 0.9),
+        status_cb=_status,
+    )
+
+    if not records:
+        _status("Aucune donnée bâtiment récupérée.")
+        return 0
+
+    _status(f"Écriture de {len(records):,} bâtiments en base...")
+
+    rows = [tuple(r[c] for c in _BATIMENT_COLS) for r in records]
+    placeholders = ",".join(["?"] * len(_BATIMENT_COLS))
+
+    conn = _get_conn()
+    try:
+        with _write_lock:
+            conn.execute("DELETE FROM batiments")
+            conn.commit()
+
+            chunk = 1000
+            total_chunks = (len(rows) + chunk - 1) // chunk
+            for idx, i in enumerate(range(0, len(rows), chunk)):
+                conn.executemany(
+                    f"INSERT OR REPLACE INTO batiments "
+                    f"({', '.join(_BATIMENT_COLS)}) VALUES ({placeholders})",
+                    rows[i : i + chunk],
+                )
+                conn.commit()
+                _progress(0.9 + ((idx + 1) / total_chunks) * 0.1)
+    finally:
+        conn.close()
+
+    _progress(1.0)
+    _status(f"Terminé — {len(rows):,} bâtiments enregistrés.")
+    return len(rows)
+
+
+@st.cache_data(ttl=600)
+def load_batiments_by_egids(egids: tuple) -> list[dict]:
+    """Load building characteristics for a set of EGIDs."""
+    if not egids:
+        return []
+    conn = _get_conn()
+    try:
+        placeholders = ",".join(["?"] * len(egids))
+        cur = conn.execute(
+            f"SELECT {', '.join(_BATIMENT_COLS)} FROM batiments "
+            f"WHERE egid IN ({placeholders}) ORDER BY egid",
+            list(egids),
+        )
+        rows = cur.fetchall()
+    finally:
+        conn.close()
+    return [dict(zip(_BATIMENT_COLS, r)) for r in rows]
 
 
 # ---------------------------------------------------------------------------
@@ -570,6 +694,9 @@ def _refresh_needed(refresh_interval: timedelta) -> bool:
             conn.execute("SELECT 1 FROM autorizations LIMIT 1").fetchone() is None
         )
         idc_empty = conn.execute("SELECT 1 FROM idc_data LIMIT 1").fetchone() is None
+        batiments_empty = (
+            conn.execute("SELECT 1 FROM batiments LIMIT 1").fetchone() is None
+        )
     finally:
         conn.close()
 
@@ -597,14 +724,15 @@ def _refresh_needed(refresh_interval: timedelta) -> bool:
     # A table is empty despite a recent attempt (e.g. a source layer returned no
     # rows, or a stage failed). Retry — but at most once per cooldown, NOT on every
     # rerun, otherwise adding an address would re-trigger the full download.
-    any_empty = addr_empty or autor_empty or idc_empty
+    any_empty = addr_empty or autor_empty or idc_empty or batiments_empty
     if any_empty and age >= _EMPTY_RETRY_COOLDOWN:
         logger.info(
             "Refresh needed: empty table past cooldown "
-            "(addr_empty=%s autor_empty=%s idc_empty=%s age=%s).",
+            "(addr_empty=%s autor_empty=%s idc_empty=%s batiments_empty=%s age=%s).",
             addr_empty,
             autor_empty,
             idc_empty,
+            batiments_empty,
             age,
         )
         return True
@@ -653,9 +781,10 @@ def _do_full_refresh(addresses_url: str, state: dict) -> None:
     """
     bar = _StateBar(state)
     status = _StateStatus(state)
-    idc_bar = _split_progress(bar, 0.0, 1 / 3)
-    autor_bar = _split_progress(bar, 1 / 3, 1 / 3)
-    addr_bar = _split_progress(bar, 2 / 3, 1 / 3)
+    idc_bar = _split_progress(bar, 0.0, 1 / 4)
+    autor_bar = _split_progress(bar, 1 / 4, 1 / 4)
+    batiments_bar = _split_progress(bar, 2 / 4, 1 / 4)
+    addr_bar = _split_progress(bar, 3 / 4, 1 / 4)
 
     # Each stage is isolated: a failure in one (e.g. autorizations) must NOT skip
     # the timestamp write, otherwise last_full_refresh_utc stays unset and the gate
@@ -678,6 +807,13 @@ def _do_full_refresh(addresses_url: str, state: dict) -> None:
     except Exception as exc:
         logger.warning("Autorizations refresh failed: %s", exc)
         errors.append(f"autor: {exc}")
+
+    try:
+        refresh_batiments_db(progress_bar=batiments_bar, status_text=status)
+        load_batiments_by_egids.clear()
+    except Exception as exc:
+        logger.warning("Batiments refresh failed: %s", exc)
+        errors.append(f"batiments: {exc}")
 
     try:
         refresh_adresses_db(addresses_url, progress_bar=addr_bar, status_text=status)
