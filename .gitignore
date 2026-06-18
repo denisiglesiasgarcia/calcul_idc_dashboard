@@ -12,3 +12,4 @@ __pycache__/
 idc_local.db
 idc_local.db-wal
 idc_local.db-shm
+.venv
