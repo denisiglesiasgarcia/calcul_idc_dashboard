@@ -764,12 +764,17 @@ def _show_batiment_kpis(batiment_records: list[dict]) -> None:
     footprint gives the physical scale of the selection.
     """
     # Destination — predominant use, with the full set of distinct uses in help.
-    destinations = [r.get("destination") for r in batiment_records if r.get("destination")]
+    destinations = [
+        r.get("destination") for r in batiment_records if r.get("destination")
+    ]
     distinct_dest = sorted(set(destinations))
     if not distinct_dest:
         dest_value, dest_help = "N/A", "Destination non renseignée."
     elif len(distinct_dest) == 1:
-        dest_value, dest_help = distinct_dest[0], "Destination des bâtiments sélectionnés."
+        dest_value, dest_help = (
+            distinct_dest[0],
+            "Destination des bâtiments sélectionnés.",
+        )
     else:
         # Most frequent destination as the headline, full list in the tooltip.
         predominant = max(distinct_dest, key=destinations.count)
@@ -777,13 +782,23 @@ def _show_batiment_kpis(batiment_records: list[dict]) -> None:
         dest_help = "Destinations présentes : " + ", ".join(distinct_dest)
 
     # Construction period — year range, falling back to the textual epoch.
-    annees = [r.get("annee_construction") for r in batiment_records if r.get("annee_construction")]
+    annees = [
+        r.get("annee_construction")
+        for r in batiment_records
+        if r.get("annee_construction")
+    ]
     if annees:
         a_min, a_max = min(annees), max(annees)
         constr_value = str(a_min) if a_min == a_max else f"{a_min}–{a_max}"
         constr_help = "Année de construction (min–max des bâtiments sélectionnés)."
     else:
-        epoques = sorted({r.get("epoque_construction") for r in batiment_records if r.get("epoque_construction")})
+        epoques = sorted(
+            {
+                r.get("epoque_construction")
+                for r in batiment_records
+                if r.get("epoque_construction")
+            }
+        )
         if not epoques:
             constr_value, constr_help = "N/A", "Année de construction non renseignée."
         elif len(epoques) == 1:
