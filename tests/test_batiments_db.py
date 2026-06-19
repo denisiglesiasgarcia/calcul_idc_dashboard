@@ -41,8 +41,7 @@ class TestInitBatimentsTable:
         conn = sqlite3.connect(db.DB_PATH)
         try:
             row = conn.execute(
-                "SELECT name FROM sqlite_master "
-                "WHERE type='table' AND name='batiments'"
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='batiments'"
             ).fetchone()
         finally:
             conn.close()
