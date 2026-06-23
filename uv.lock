@@ -127,7 +127,7 @@ wheels = [
 
 [[package]]
 name = "calcul-idc-dashboard"
-version = "0.1.6"
+version = "0.1.7"
 source = { virtual = "." }
 dependencies = [
     { name = "extra-streamlit-components" },
@@ -2580,9 +2580,10 @@ wheels = [
 
 [[package]]
 name = "sitg-api"
-version = "0.1.6"
-source = { git = "https://github.com/denisiglesiasgarcia/sitg-api#fc44c782206f1195e1fc60397efd2c0ce28c468a" }
+version = "0.1.9"
+source = { git = "https://github.com/denisiglesiasgarcia/sitg-api#3a9f71bb3491d647a1ad00861a8622402fa78cc2" }
 dependencies = [
+    { name = "bump-my-version" },
     { name = "dataframely" },
     { name = "geopandas" },
     { name = "httpx" },
