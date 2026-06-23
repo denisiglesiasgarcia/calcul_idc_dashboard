@@ -1,6 +1,6 @@
 [project]
 name = "calcul-idc-dashboard"
-version = "0.1.0"
+version = "0.1.6"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -12,6 +12,7 @@ dependencies = [
     "openpyxl>=3.1.5",
     "plotly>=6.0.1",
     "polars>=1.23.0",
+    "pre-commit>=4.6.0",
     "pyproj>=3.7.1",
     "pytest>=8.3.5",
     "ruff>=0.11.0",
@@ -27,3 +28,19 @@ link-mode = "copy"
 
 [tool.uv.sources]
 sitg-api = { git = "https://github.com/denisiglesiasgarcia/sitg-api" }
+
+[dependency-groups]
+dev = [
+    "bump-my-version>=1.4.1",
+]
+
+[tool.bumpversion]
+current_version = "0.1.6"
+commit = false
+tag = false
+
+[[tool.bumpversion.files]]
+filename = "pyproject.toml"
+regex = true
+search = '^version = "{current_version}"'
+replace = 'version = "{new_version}"'
