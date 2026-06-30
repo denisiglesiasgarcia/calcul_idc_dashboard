@@ -47,12 +47,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5.6.0
+      - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.13"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt pytest
+        run: uv sync --frozen
 
       - name: Run integration tests
-        run: pytest tests/test_idc_api_integration.py -v
+        run: uv run pytest tests/test_idc_api_integration.py -v
