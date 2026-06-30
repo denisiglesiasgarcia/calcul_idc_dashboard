@@ -1779,7 +1779,7 @@ shapely==2.1.2 \
     # via
     #   geopandas
     #   sitg-api
-sitg-api @ git+https://github.com/denisiglesiasgarcia/sitg-api@580dfb244e3a498ebc0e44eb80edb23daee53fcd
+sitg-api @ git+https://github.com/denisiglesiasgarcia/sitg-api@bb29daaf0eb81fa287fae166b6d18cc1dafafbc8
     # via calcul-idc-dashboard
 six==1.17.0 \
     --hash=sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274 \
