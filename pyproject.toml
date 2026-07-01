@@ -1,6 +1,6 @@
 [project]
 name = "calcul-idc-dashboard"
-version = "0.1.24"
+version = "0.1.26"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -40,7 +40,7 @@ dev = [
 ]
 
 [tool.bumpversion]
-current_version = "0.1.24"
+current_version = "0.1.26"
 commit = false
 tag = false
 
