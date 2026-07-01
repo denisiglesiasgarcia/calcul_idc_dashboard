@@ -1,7 +1,7 @@
 # /sections/helpers/idc_charts.py
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, cast
 
 import plotly.express as px
 import plotly.graph_objects as go
@@ -50,16 +50,16 @@ def create_barplot(
     )
 
     # Year bounds: trim to actual data, optionally narrowed by sidebar filter
-    data_min = df["annee"].min()
-    data_max = df["annee"].max()
+    data_min = int(cast(int, df["annee"].min()))
+    data_max = int(cast(int, df["annee"].max()))
     min_year = max(year_range[0], data_min) if year_range else data_min
     max_year = min(year_range[1], data_max) if year_range else data_max
 
     # Guard: if the selected period contains no data, show a warning and return early
     if min_year > max_year:
+        periode_msg = f" ({year_range[0]}–{year_range[1]})." if year_range else "."
         st.warning(
-            f"Aucune donnée disponible pour la période sélectionnée "
-            f"({year_range[0]}–{year_range[1]}). "
+            f"Aucune donnée disponible pour la période sélectionnée{periode_msg} "
             f"Les données couvrent {data_min}–{data_max}."
         )
         return
@@ -166,7 +166,8 @@ def create_barplot(
         .sort(["adresse_egid", "annee"])
     )
 
-    longest_label = df_full["adresse_egid"].str.len_chars().max()
+    max_label_len = cast("int | None", df_full["adresse_egid"].str.len_chars().max())
+    longest_label = max_label_len or 0
     right_margin = longest_label * 8 + 25
 
     # custom_data index mapping (used in hovertemplate):
@@ -274,7 +275,7 @@ def create_barplot(
             .with_columns(
                 pl.col("indice_pondere")
                 .cast(pl.Float64)
-                .rolling_mean(window_size=3, min_periods=3)
+                .rolling_mean(window_size=3, min_samples=3)
                 .round(0)
                 .alias("indice_pondere_moy3")
             )
@@ -353,7 +354,8 @@ def create_barplot(
             annotation_font_color="red",
         )
 
-    y_max = max(df_full["indice"].max() or 0, seuil or 0) * 1.2
+    indice_max = cast("int | float | None", df_full["indice"].max())
+    y_max = max(float(indice_max or 0), float(seuil or 0)) * 1.2
 
     fig.update_layout(
         xaxis_title="Année",

@@ -1,15 +1,11 @@
 # main.py
 
 from datetime import datetime
+from typing import Callable
 
 import polars as pl
+import sitg_api
 import streamlit as st
-
-try:
-    # Logs sitg_api (téléchargements SITG) : horodatage local + sink compatible tqdm.
-    from sitg_api import configure_logging
-except ImportError:  # version de sitg_api antérieure à configure_logging
-    configure_logging = None
 
 from sections.helpers.db import (
     get_all_addresses,
@@ -37,6 +33,12 @@ from sections.helpers.idc_tables import (
     show_batiments_table,
     show_dataframe,
     show_kpis,
+)
+
+# Logs sitg_api (téléchargements SITG) : horodatage local + sink compatible tqdm.
+# Absent dans les versions de sitg_api antérieures à configure_logging.
+configure_logging: Callable[..., None] | None = getattr(
+    sitg_api, "configure_logging", None
 )
 
 # Active les logs sitg_api une fois par session (loguru, heure locale).
@@ -479,37 +481,37 @@ try:
                 if selected_statuts:
                     df_autor = df_autor.filter(pl.col("statut").is_in(selected_statuts))
 
-                    st.dataframe(
-                        df_autor.select(
-                            [
-                                "date_depot",
-                                "egid",
-                                "id_dossier",
-                                "type_dossier",
-                                "type_operation",
-                                "statut",
-                                "description",
-                                "lien_sad",
-                            ]
+                st.dataframe(
+                    df_autor.select(
+                        [
+                            "date_depot",
+                            "egid",
+                            "id_dossier",
+                            "type_dossier",
+                            "type_operation",
+                            "statut",
+                            "description",
+                            "lien_sad",
+                        ]
+                    ),
+                    width="stretch",
+                    hide_index=True,
+                    column_config={
+                        "date_depot": st.column_config.TextColumn("Date dépôt"),
+                        "egid": st.column_config.TextColumn("EGID"),
+                        "id_dossier": st.column_config.TextColumn("Dossier"),
+                        "type_dossier": st.column_config.TextColumn("Type"),
+                        "type_operation": st.column_config.TextColumn("Opération"),
+                        "statut": st.column_config.TextColumn("Statut"),
+                        "description": st.column_config.TextColumn("Description"),
+                        "lien_sad": st.column_config.LinkColumn(
+                            "Lien SAD", display_text="Consulter"
                         ),
-                        width="stretch",
-                        hide_index=True,
-                        column_config={
-                            "date_depot": st.column_config.TextColumn("Date dépôt"),
-                            "egid": st.column_config.TextColumn("EGID"),
-                            "id_dossier": st.column_config.TextColumn("Dossier"),
-                            "type_dossier": st.column_config.TextColumn("Type"),
-                            "type_operation": st.column_config.TextColumn("Opération"),
-                            "statut": st.column_config.TextColumn("Statut"),
-                            "description": st.column_config.TextColumn("Description"),
-                            "lien_sad": st.column_config.LinkColumn(
-                                "Lien SAD", display_text="Consulter"
-                            ),
-                        },
-                    )
+                    },
+                )
                 st.caption(
-                    f"{len(df_autor):,} dossier(s) affiché(s) sur \
-                    {len(autor_records):,}au total."
+                    f"{len(df_autor):,} dossier(s) affiché(s) sur "
+                    f"{len(autor_records):,} au total."
                 )
             else:
                 st.info(
@@ -523,8 +525,8 @@ try:
         show_batiments_table(batiment_records)
     else:
         st.warning(
-            "Veuillez renseigner une ou plusieurs adresses pour afficher \
-                les données IDC."
+            "Veuillez renseigner une ou plusieurs adresses pour afficher "
+            "les données IDC."
         )
 except Exception as e:
     st.error(f"Une erreur est survenue lors de l'analyse : {e}")

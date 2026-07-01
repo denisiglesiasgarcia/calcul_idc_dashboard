@@ -276,17 +276,17 @@ def load_autorizations_by_egids(egids: tuple) -> list[dict]:
     conn = _get_conn()
     try:
         placeholders = ",".join(["?"] * len(egids))
-        cur = conn.execute(
-            f"""
-            SELECT egid, commune, id_dossier, type_dossier, type_operation,
-                   nom_dossier, statut, date_depot, description, operation,
-                   lien_sad, date_maj
-            FROM autorizations
-            WHERE egid IN ({placeholders})
-            ORDER BY date_depot DESC
-            """,
-            list(egids),
+        # egid values are bound as query parameters below; placeholders is just
+        # a run of "?" chars sized to len(egids), not user input.
+        query = (
+            "SELECT egid, commune, id_dossier, type_dossier, type_operation, "  # nosec B608
+            "nom_dossier, statut, date_depot, description, operation, "
+            "lien_sad, date_maj "
+            "FROM autorizations "
+            f"WHERE egid IN ({placeholders}) "
+            "ORDER BY date_depot DESC"
         )
+        cur = conn.execute(query, list(egids))
         rows = cur.fetchall()
     finally:
         conn.close()
@@ -394,8 +394,10 @@ def load_batiments_by_egids(egids: tuple) -> list[dict]:
     conn = _get_conn()
     try:
         placeholders = ",".join(["?"] * len(egids))
+        # egid values are bound as query parameters below; _BATIMENT_COLS is a
+        # fixed internal column list, not user input.
         cur = conn.execute(
-            f"SELECT {', '.join(_BATIMENT_COLS)} FROM batiments "
+            f"SELECT {', '.join(_BATIMENT_COLS)} FROM batiments "  # nosec B608
             f"WHERE egid IN ({placeholders}) ORDER BY egid",
             list(egids),
         )
@@ -584,8 +586,10 @@ def load_idc_by_egids(
     conn = _get_conn()
     try:
         placeholders = ",".join(["?"] * len(egids))
+        # egid values are bound as query parameters below; _IDC_COLS is a
+        # fixed internal column list, not user input.
         cur = conn.execute(
-            f"SELECT {', '.join(_IDC_COLS)}, geometry_json "
+            f"SELECT {', '.join(_IDC_COLS)}, geometry_json "  # nosec B608
             f"FROM idc_data WHERE egid IN ({placeholders}) ORDER BY egid, annee",
             list(egids),
         )
@@ -893,6 +897,8 @@ def refresh_db_at_startup_if_needed(
         else:
             # Another thread finished refreshing while we waited for the lock.
             return False
+
+    assert state is not None  # set in both branches above
 
     # Mirror the background thread's progress into this run's widgets until done.
     while thread.is_alive():

@@ -1,14 +1,13 @@
 # sections/helpers/save_excel_streamlit.py
 
 import logging
-import traceback
 from datetime import datetime
 from io import BytesIO
 from typing import Any
 
 import numpy as np
 import pandas as pd
-import streamlit as st
+from openpyxl.utils import get_column_letter
 
 # Configure logging with timestamp
 logging.basicConfig(
@@ -146,7 +145,9 @@ def convert_df_to_excel(data: pd.DataFrame | dict[str, Any]) -> bytes:
                 max_length = min(max_length, 50)
 
                 # Set column width
-                worksheet.column_dimensions[chr(65 + idx)].width = max_length
+                worksheet.column_dimensions[
+                    get_column_letter(idx + 1)
+                ].width = max_length
 
             # Style header row
             for cell in worksheet[1]:
@@ -170,47 +171,3 @@ def convert_df_to_excel(data: pd.DataFrame | dict[str, Any]) -> bytes:
     finally:
         if output:
             output.close()
-
-
-def display_dataframe_with_excel_download(
-    data: pd.DataFrame | dict[str, Any], filename: str = "data.xlsx"
-) -> None:
-    """
-    Display data in Streamlit with Excel download button and error handling.
-
-    Args:
-        data: Input data (DataFrame or dictionary)
-        filename: Name of the Excel file for download
-    """
-    try:
-        # Validate filename
-        if not isinstance(filename, str):
-            filename = str(filename)
-        if not filename.endswith(".xlsx"):
-            filename += ".xlsx"
-
-        # Process data
-        display_df = validate_data(data)
-
-        # Display data
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
-
-        # Generate Excel file
-        excel_data = convert_df_to_excel(data)
-
-        # Create download button
-        st.download_button(
-            label="📥 Download Excel",
-            data=excel_data,
-            file_name=filename,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
-
-    except ExcelExportError as e:
-        error_msg = f"Error: {e.message}"
-        if e.original_error:
-            logger.error(f"{error_msg}\nOriginal error: {traceback.format_exc()}")
-        else:
-            logger.error(error_msg)
-        st.error(error_msg)

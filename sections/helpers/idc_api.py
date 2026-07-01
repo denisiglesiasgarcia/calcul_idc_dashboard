@@ -39,7 +39,7 @@ RESULT_COLUMNS = [
 ]
 
 # Schéma attendu après transformation — source de vérité pour les tests et la prod
-EXPECTED_SCHEMA: dict[str, pl.DataType] = {
+EXPECTED_SCHEMA: dict[str, type[pl.DataType] | pl.DataType] = {
     "egid": pl.Int64,
     "annee": pl.Int64,
     "indice": pl.Int64,
@@ -137,7 +137,7 @@ def fetch_idc_data(
     }
 
     try:
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, timeout=30)
         response.raise_for_status()
         data = response.json()
 

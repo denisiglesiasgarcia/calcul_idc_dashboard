@@ -1,6 +1,7 @@
 # /sections/helpers/idc_tables.py
 
 import logging
+from typing import Optional, cast
 
 import pandas as pd
 import polars as pl
@@ -12,7 +13,7 @@ logging.basicConfig(level=logging.WARNING)
 
 
 def show_dataframe(
-    data: list[dict], seuil: int = 450, year_range: tuple = None
+    data: list[dict], seuil: int = 450, year_range: Optional[tuple] = None
 ) -> None:
     df = pl.from_dicts(data)
 
@@ -118,7 +119,7 @@ def show_dataframe(
     st.caption(f"{len(df_filtered):,} ligne(s) affichée(s) sur {len(df):,}")
 
     # --- column_config: IDC as progress bar, dates formatted, SRE as number ---
-    indice_max = int(df["indice"].drop_nulls().max() or 1000)
+    indice_max = int(cast(int, df["indice"].drop_nulls().max()) or 1000)
 
     col_cfg = {
         "indice": st.column_config.ProgressColumn(
@@ -229,7 +230,7 @@ def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
         .with_columns(
             pl.col("indice_pondere")
             .cast(pl.Float64)
-            .rolling_mean(window_size=3, min_periods=3)
+            .rolling_mean(window_size=3, min_samples=3)
             .round(0)
             .cast(pl.Int64)
             .alias("indice_moy3_calcule")
@@ -266,7 +267,7 @@ def _show_groupby_annee(df_display: pl.DataFrame, seuil: int) -> None:
         )
     )
 
-    indice_max = int(df_grouped["indice_pondere"].max() or 1000)
+    indice_max = int(cast(int, df_grouped["indice_pondere"].max()) or 1000)
 
     col_cfg = {
         "annee": st.column_config.NumberColumn(label="Année", format="%d"),
@@ -498,16 +499,17 @@ def show_kpis(
     if year_range:
         df = df.filter(pl.col("annee").is_between(year_range[0], year_range[1]))
 
-    latest_year = df["annee"].max()
-    first_year = df["annee"].min()
+    latest_year = int(cast(int, df["annee"].max()))
+    first_year = int(cast(int, df["annee"].min()))
     df_latest = df.filter(pl.col("annee") == latest_year)
-    total_sre = df_latest["sre"].sum()
+    total_sre = cast(float, df_latest["sre"].sum())
 
     # IDC pondéré SRE dernière année
     if total_sre and total_sre > 0:
-        idc_current = (df_latest["indice"] * df_latest["sre"]).sum() / total_sre
+        indice_x_sre = cast(float, (df_latest["indice"] * df_latest["sre"]).sum())
+        idc_current = indice_x_sre / total_sre
     else:
-        idc_current = df_latest["indice"].mean()
+        idc_current = cast(float, df_latest["indice"].mean())
 
     # Agrégation annuelle pondérée SRE
     df_agg = (
@@ -531,7 +533,7 @@ def show_kpis(
         .with_columns(
             pl.col("indice_pondere")
             .cast(pl.Float64)
-            .rolling_mean(window_size=3, min_periods=3)
+            .rolling_mean(window_size=3, min_samples=3)
             .round(0)
             .alias("indice_pondere_moy3")
         )
@@ -568,11 +570,11 @@ def show_kpis(
 
     # Ratio première → dernière année
     df_first = df.filter(pl.col("annee") == first_year)
-    sre_first = df_first["sre"].sum()
+    sre_first = cast(float, df_first["sre"].sum())
     idc_first = (
-        (df_first["indice"] * df_first["sre"]).sum() / sre_first
+        cast(float, (df_first["indice"] * df_first["sre"]).sum()) / sre_first
         if sre_first and sre_first > 0
-        else df_first["indice"].mean()
+        else cast(float, df_first["indice"].mean())
     )
     ratio = (
         ((idc_current - idc_first) / idc_first * 100)
@@ -625,10 +627,14 @@ def show_kpis(
         .sort("annee")
     )
     if not df_sre_coverage.is_empty():
-        sre_year_first = df_sre_coverage["annee"].min()
-        sre_year_last = df_sre_coverage["annee"].max()
-        sre_val_first = df.filter(pl.col("annee") == sre_year_first)["sre"].sum()
-        sre_val_last = df.filter(pl.col("annee") == sre_year_last)["sre"].sum()
+        sre_year_first = int(cast(int, df_sre_coverage["annee"].min()))
+        sre_year_last = int(cast(int, df_sre_coverage["annee"].max()))
+        sre_val_first = cast(
+            float, df.filter(pl.col("annee") == sre_year_first)["sre"].sum()
+        )
+        sre_val_last = cast(
+            float, df.filter(pl.col("annee") == sre_year_last)["sre"].sum()
+        )
         if sre_val_first and sre_val_first > 0 and sre_val_last and sre_val_last > 0:
             sre_delta = sre_val_last - sre_val_first
         else:
@@ -637,7 +643,7 @@ def show_kpis(
         sre_year_first = first_year
         sre_year_last = latest_year
         sre_val_first = sre_first
-        sre_val_last = df_latest["sre"].sum()
+        sre_val_last = cast(float, df_latest["sre"].sum())
         if sre_val_first and sre_val_first > 0 and sre_val_last and sre_val_last > 0:
             sre_delta = sre_val_last - sre_val_first
         else:

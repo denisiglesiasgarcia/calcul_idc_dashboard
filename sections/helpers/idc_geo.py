@@ -1,7 +1,7 @@
 # /sections/helpers/idc_geo.py
 
 import logging
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pydeck as pdk
@@ -50,9 +50,9 @@ def convert_geometry_for_streamlit(data: List[Dict]) -> Tuple:
 
 
 def show_map(
-    data: List[Dict],
+    data: Dict,
     centroid: Tuple[float, float],
-    batiments_by_egid: Dict | None = None,
+    batiments_by_egid: Optional[Dict] = None,
 ) -> None:
     """Render a PyDeck GeoJSON map centred on the selected buildings.
 
@@ -64,7 +64,7 @@ def show_map(
     # Couleur dynamique selon IDC : vert (bas) → rouge (élevé)
     # Si IDC absent, fallback sur rouge neutre
     def _idc_to_color(feature: Dict) -> List[int]:
-        idc = feature.get("properties", {}).get("indice_calcule", None)
+        idc = feature.get("properties", {}).get("indice", None)
         if idc is None:
             return [200, 100, 100, 200]
         # Normalise entre 0 (≤150) et 1 (≥600)
@@ -106,6 +106,19 @@ def show_map(
             return ""
         return "<hr style='margin:4px 0'/>" + "<br/>".join(parts)
 
+    # Construit les labels agent 2 / agent 3 pour l'infobulle, ou une chaîne
+    # vide si l'agent correspondant est absent.
+    def _clean_agents(props: Dict) -> Dict:
+        cleaned = {}
+        for i in (2, 3):
+            agent = props.get(f"agent_energetique_{i}")
+            qte = props.get(f"quantite_agent_energetique_{i}")
+            unite = props.get(f"unite_agent_energetique_{i}", "")
+            cleaned[f"_agent_{i}_label"] = (
+                f"<b>Agent {i} :</b> {agent} — {qte} {unite or ''}" if agent else ""
+            )
+        return cleaned
+
     # Injecte la couleur et les infos bâtiment dans chaque feature pour GeoJsonLayer
     colored_data = {
         "type": "FeatureCollection",
@@ -116,6 +129,7 @@ def show_map(
                     **f["properties"],
                     "_color": _idc_to_color(f),
                     "_batiment_info": _batiment_html(f["properties"]),
+                    **_clean_agents(f["properties"]),
                 },
             }
             for f in data["features"]
@@ -158,18 +172,6 @@ def show_map(
         zoom=zoom,
         pitch=0,  # vue plane — extrusion désactivée
     )
-
-    def _clean_agents(props: Dict) -> Dict:
-        cleaned = dict(props)
-        for i in (2, 3):
-            agent = cleaned.get(f"agent_energetique_{i}")
-            qte = cleaned.get(f"quantite_agent_energetique_{i}")
-            unite = cleaned.get(f"unite_agent_energetique_{i}", "")
-            # Construit un label complet ou chaîne vide
-            cleaned[f"_agent_{i}_label"] = (
-                f"<b>Agent {i} :</b> {agent} — {qte} {unite or ''}" if agent else ""
-            )
-        return cleaned
 
     deck = pdk.Deck(
         layers=[layer],
