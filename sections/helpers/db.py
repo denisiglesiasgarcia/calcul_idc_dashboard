@@ -822,6 +822,7 @@ def _do_full_refresh(addresses_url: str, state: dict) -> None:
     try:
         refresh_adresses_db(addresses_url, progress_bar=addr_bar, status_text=status)
         get_all_addresses.clear()
+        get_address_lookup.clear()
     except Exception as exc:
         logger.warning("Adresses refresh failed: %s", exc)
         errors.append(f"adresses: {exc}")
@@ -951,3 +952,37 @@ def get_all_addresses() -> pl.DataFrame:
             }
         )
     return pl.DataFrame({"adresse": [r[0] for r in rows], "egid": [r[1] for r in rows]})
+
+
+@st.cache_resource
+def get_address_lookup() -> dict:
+    """Precompute the address-picker display strings and lookup maps once per
+    data refresh, instead of rebuilding them from get_all_addresses() on every
+    Streamlit rerun (i.e. on every keystroke in the address filter box).
+    """
+    df = get_all_addresses()
+    df = df.with_columns(
+        pl.col("egid").cast(pl.Utf8).fill_null("N/A").alias("egid_str")
+    ).with_columns(
+        (pl.col("adresse") + " (" + pl.col("egid_str") + ")").alias("display")
+    )
+
+    display_options = df["display"].to_list()
+    options_map = {
+        row["display"]: {"adresse": row["adresse"], "egid": row["egid_str"]}
+        for row in df.to_dicts()
+    }
+    egid_to_display = {v["egid"]: k for k, v in options_map.items()}
+    # Reverse map: adresse (lowercase) -> display label — recherche insensible à la casse
+    adresse_to_display = {v["adresse"].lower(): k for k, v in options_map.items()}
+    # Precomputed lowercase display strings so the filter text box doesn't
+    # re-lowercase every option on each keystroke.
+    display_options_lower = [o.lower() for o in display_options]
+
+    return {
+        "display_options": display_options,
+        "display_options_lower": display_options_lower,
+        "options_map": options_map,
+        "egid_to_display": egid_to_display,
+        "adresse_to_display": adresse_to_display,
+    }

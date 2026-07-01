@@ -8,7 +8,7 @@ import sitg_api
 import streamlit as st
 
 from sections.helpers.db import (
-    get_all_addresses,
+    get_address_lookup,
     init_adresses_table,
     init_autorizations_table,
     init_batiments_table,
@@ -248,19 +248,12 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-df_addresses = get_all_addresses()
-
-df_addresses = df_addresses.with_columns(
-    pl.col("egid").cast(pl.Utf8).fill_null("N/A").alias("egid_str")
-).with_columns((pl.col("adresse") + " (" + pl.col("egid_str") + ")").alias("display"))
-
-display_options = df_addresses["display"].to_list()
-options_map: dict[str, dict] = {
-    row["display"]: {"adresse": row["adresse"], "egid": row["egid_str"]}
-    for row in df_addresses.to_dicts()
-}
+address_lookup = get_address_lookup()
+display_options = address_lookup["display_options"]
+display_options_lower = address_lookup["display_options_lower"]
+options_map: dict[str, dict] = address_lookup["options_map"]
 # Reverse map: egid -> display label
-egid_to_display: dict[str, str] = {v["egid"]: k for k, v in options_map.items()}
+egid_to_display: dict[str, str] = address_lookup["egid_to_display"]
 
 # External filter + bulk action buttons
 col_search, col_all, col_clear = st.columns([6, 1, 1])
@@ -279,9 +272,14 @@ with col_search:
         key="address_search_filter",
     )
 
-# Apply filter on the full list
+# Apply filter on the full list (using precomputed lowercase strings so this
+# doesn't re-lowercase all options on every keystroke)
 filtered_options = (
-    [o for o in display_options if search_filter.lower() in o.lower()]
+    [
+        o
+        for o, o_lower in zip(display_options, display_options_lower)
+        if search_filter.lower() in o_lower
+    ]
     if search_filter
     else display_options
 )
@@ -325,9 +323,7 @@ selected_options = st.multiselect(
 
 # Reverse map: adresse (lowercase) -> display label — pour la recherche
 # insensible à la casse
-adresse_to_display: dict[str, str] = {
-    v["adresse"].lower(): k for k, v in options_map.items()
-}
+adresse_to_display: dict[str, str] = address_lookup["adresse_to_display"]
 
 # Import rapide depuis une liste d'EGIDs
 with st.expander("Charger depuis une liste d'adresses"):
