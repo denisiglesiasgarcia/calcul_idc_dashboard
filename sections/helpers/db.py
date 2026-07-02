@@ -114,33 +114,45 @@ def init_autorizations_table() -> None:
 
 
 def init_batiments_table() -> None:
+    # This function runs on every script rerun (main.py, unguarded), so the
+    # whole create-then-migrate sequence is lock-protected against concurrent
+    # Streamlit sessions racing each other; the duplicate-column catch is a
+    # second line of defense in case another process alters the schema first.
     conn = _get_conn()
     try:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS batiments (
-                egid                 INTEGER PRIMARY KEY,
-                commune              TEXT,
-                no_batiment          TEXT,
-                nombat               TEXT,
-                destination          TEXT,
-                nomenclature         TEXT,
-                nomen_classe         TEXT,
-                epoque_construction  TEXT,
-                annee_construction   INTEGER,
-                annee_transformation INTEGER,
-                niveaux_horsol       INTEGER,
-                niveaux_ssol         INTEGER,
-                hauteur              REAL,
-                surface              INTEGER
-            )
-        """)
-        # Migration: geometry_json was added after this table shipped.
-        # CREATE TABLE IF NOT EXISTS is a no-op on an already-existing table,
-        # so add the column explicitly for databases created before this change.
-        existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(batiments)")}
-        if "geometry_json" not in existing_cols:
-            conn.execute("ALTER TABLE batiments ADD COLUMN geometry_json TEXT")
-        conn.commit()
+        with _write_lock:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS batiments (
+                    egid                 INTEGER PRIMARY KEY,
+                    commune              TEXT,
+                    no_batiment          TEXT,
+                    nombat               TEXT,
+                    destination          TEXT,
+                    nomenclature         TEXT,
+                    nomen_classe         TEXT,
+                    epoque_construction  TEXT,
+                    annee_construction   INTEGER,
+                    annee_transformation INTEGER,
+                    niveaux_horsol       INTEGER,
+                    niveaux_ssol         INTEGER,
+                    hauteur              REAL,
+                    surface              INTEGER
+                )
+            """)
+            # Migration: geometry_json was added after this table shipped.
+            # CREATE TABLE IF NOT EXISTS is a no-op on an already-existing
+            # table, so add the column explicitly for databases created
+            # before this change.
+            existing_cols = {
+                row[1] for row in conn.execute("PRAGMA table_info(batiments)")
+            }
+            if "geometry_json" not in existing_cols:
+                try:
+                    conn.execute("ALTER TABLE batiments ADD COLUMN geometry_json TEXT")
+                except sqlite3.OperationalError as exc:
+                    if "duplicate column name" not in str(exc):
+                        raise
+            conn.commit()
     finally:
         conn.close()
 

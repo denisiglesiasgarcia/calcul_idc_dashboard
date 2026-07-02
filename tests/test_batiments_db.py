@@ -81,6 +81,53 @@ class TestInitBatimentsTable:
             conn.close()
         assert "geometry_json" in cols
 
+    def test_concurrent_calls_do_not_raise_duplicate_column(
+        self, tmp_path, monkeypatch
+    ):
+        # Regression test for a production crash: init_batiments_table() runs
+        # unguarded on every Streamlit script rerun, so two overlapping calls
+        # against a table that predates geometry_json could both see the
+        # column missing and both attempt ALTER TABLE, and the second raised
+        # "duplicate column name". The _write_lock serializes the whole
+        # create-then-migrate sequence in-process, and the duplicate-column
+        # catch is a second line of defense.
+        #
+        # Note: with enough concurrent threads, raw sqlite3.connect() calls
+        # can still race on WAL setup and raise "database is locked" — a
+        # separate, pre-existing SQLite contention characteristic unrelated
+        # to this fix, not asserted against here.
+        import threading
+
+        monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
+        conn = sqlite3.connect(db.DB_PATH)
+        try:
+            conn.execute("""
+                CREATE TABLE batiments (
+                    egid INTEGER PRIMARY KEY,
+                    commune TEXT,
+                    surface INTEGER
+                )
+            """)
+            conn.commit()
+        finally:
+            conn.close()
+
+        errors: list[Exception] = []
+
+        def _run():
+            try:
+                db.init_batiments_table()
+            except Exception as exc:  # noqa: BLE001 - captured for the assertion below
+                errors.append(exc)
+
+        threads = [threading.Thread(target=_run) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not any("duplicate column" in str(exc) for exc in errors)
+
 
 class TestRefreshBatimentsDb:
     def test_inserts_records(self, tmp_path, monkeypatch):
