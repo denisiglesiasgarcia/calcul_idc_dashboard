@@ -39,6 +39,7 @@ def _parse_polygon(geo: dict | None) -> Polygon | MultiPolygon | None:
 
 
 def fetch_reseau_thermique(
+    batiment_features: list[dict] | None = None,
     url_rts: str = URL_RESEAU_THERMIQUE,
     url_batiment: str = URL_BATIMENT_HORSOL,
     progress_cb: Callable[[float], None] | None = None,
@@ -46,8 +47,13 @@ def fetch_reseau_thermique(
 ) -> list[dict]:
     """
     Fetch the structuring thermal network development zones (OCEN_RTS_2030_2040_2050)
-    and building footprints from SITG, spatial-join them to assign each zone's
-    EGID membership.
+    from SITG and spatial-join them against building footprints to assign each
+    zone's EGID membership.
+
+    ``batiment_features`` may be a previously-fetched result of
+    fetch_batiment_footprints() (see autor_api.py) to avoid a second network
+    fetch; if omitted, this fetches it directly (useful for standalone/test
+    usage).
 
     A building can intersect several zones (e.g. a "Chaud" zone at horizon 2030
     and a "Chaud-Froid" zone at horizon 2050), so this returns one record per
@@ -55,7 +61,10 @@ def fetch_reseau_thermique(
 
     Returns a list of dicts with keys matching the `reseau_thermique` DB table.
     """
-    # Stage 1: Thermal network zone polygons (0–40%)
+    fetch_span = 0.4 if batiment_features is None else 0.8
+
+    # Stage 1: Thermal network zone polygons (0–40%, or 0–80% when the
+    # building footprints are already provided)
     if status_cb:
         status_cb("Chargement des zones réseaux thermiques SITG...")
     rts_features = fetch_all(
@@ -65,7 +74,7 @@ def fetch_reseau_thermique(
         max_workers=8,
         response_format="pbf",
         progress=False,
-        progress_cb=stage_progress(progress_cb, 0.0, 0.4),
+        progress_cb=stage_progress(progress_cb, 0.0, fetch_span),
         status_cb=status_cb,
     )
 
@@ -79,19 +88,22 @@ def fetch_reseau_thermique(
         crs="EPSG:2056",
     ).dropna(subset=["geometry", "RTS_ID"])
 
-    # Stage 2: Building polygons (40–80%)
-    if status_cb:
-        status_cb("Chargement des emprises bâtiments SITG...")
-    batiment_features = fetch_all(
-        url_batiment,
-        fields=_BATIMENT_FIELDS,
-        with_geometry=True,
-        max_workers=8,
-        response_format="pbf",
-        progress=False,
-        progress_cb=stage_progress(progress_cb, 0.4, 0.8),
-        status_cb=status_cb,
-    )
+    # Stage 2: Building polygons — reuse if provided, else fetch (40–80%)
+    if batiment_features is None:
+        if status_cb:
+            status_cb("Chargement des emprises bâtiments SITG...")
+        batiment_features = fetch_all(
+            url_batiment,
+            fields=_BATIMENT_FIELDS,
+            with_geometry=True,
+            max_workers=8,
+            response_format="pbf",
+            progress=False,
+            progress_cb=stage_progress(progress_cb, 0.4, 0.8),
+            status_cb=status_cb,
+        )
+    elif progress_cb:
+        progress_cb(0.8)
 
     if not batiment_features:
         logger.warning("Aucun bâtiment retourné par le SITG")

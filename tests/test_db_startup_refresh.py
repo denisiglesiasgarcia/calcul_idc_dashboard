@@ -35,6 +35,11 @@ def _patch_refreshes(monkeypatch, calls):
     """Patch all five refresh stages to count calls instead of hitting SITG."""
     monkeypatch.setattr(
         db,
+        "fetch_batiment_footprints",
+        lambda **kw: [],
+    )
+    monkeypatch.setattr(
+        db,
         "refresh_adresses_db",
         lambda url, **kw: calls.__setitem__("addr", calls["addr"] + 1) or 1,
     )

@@ -12,7 +12,11 @@ import polars as pl
 import streamlit as st
 from sitg_api import fetch_all
 
-from sections.helpers.autor_api import fetch_and_join_autorizations, fetch_batiments
+from sections.helpers.autor_api import (
+    fetch_and_join_autorizations,
+    fetch_batiment_footprints,
+    fetch_batiments,
+)
 from sections.helpers.reseau_thermique_api import fetch_reseau_thermique
 
 logger = logging.getLogger(__name__)
@@ -211,12 +215,14 @@ def init_idc_table() -> None:
 
 
 def refresh_autorizations_db(
+    batiment_features: list[dict] | None = None,
     progress_bar=None,
     status_text=None,
 ) -> int:
     """
-    Full ETL: fetch SIT_AUTOR_DOSSIER + CAD_BATIMENT_HORSOL from SITG,
-    spatial-join to get EGID per dossier, then truncate/insert into local SQLite.
+    Full ETL: fetch SIT_AUTOR_DOSSIER from SITG, spatial-join against
+    ``batiment_features`` (or fetch CAD_BATIMENT_HORSOL directly if not
+    provided) to get EGID per dossier, then truncate/insert into local SQLite.
     Returns the number of records inserted.
     """
 
@@ -230,6 +236,7 @@ def refresh_autorizations_db(
             progress_bar.progress(value)
 
     records = fetch_and_join_autorizations(
+        batiment_features=batiment_features,
         progress_cb=lambda f: _progress(f * 0.9),
         status_cb=_status,
     )
@@ -352,12 +359,14 @@ _BATIMENT_COLS = [
 
 
 def refresh_batiments_db(
+    batiment_features: list[dict] | None = None,
     progress_bar=None,
     status_text=None,
 ) -> int:
     """
-    Full ETL: fetch CAD_BATIMENT_HORSOL building characteristics from SITG,
-    then truncate/insert into the local SQLite `batiments` table (one row per EGID).
+    Full ETL: derive CAD_BATIMENT_HORSOL building characteristics from
+    ``batiment_features`` (or fetch it directly if not provided), then
+    truncate/insert into the local SQLite `batiments` table (one row per EGID).
     Returns the number of records inserted.
     """
 
@@ -371,6 +380,7 @@ def refresh_batiments_db(
             progress_bar.progress(value)
 
     records = fetch_batiments(
+        batiment_features=batiment_features,
         progress_cb=lambda f: _progress(f * 0.9),
         status_cb=_status,
     )
@@ -437,13 +447,16 @@ _RESEAU_THERMIQUE_COLS = ["egid", "rts_id", "fluide", "horizon"]
 
 
 def refresh_reseau_thermique_db(
+    batiment_features: list[dict] | None = None,
     progress_bar=None,
     status_text=None,
 ) -> int:
     """
-    Full ETL: fetch OCEN_RTS_2030_2040_2050 thermal network zones + CAD_BATIMENT_HORSOL
-    from SITG, spatial-join to get EGID per zone, then truncate/insert into the
-    local SQLite `reseau_thermique` table. Returns the number of records inserted.
+    Full ETL: fetch OCEN_RTS_2030_2040_2050 thermal network zones from SITG,
+    spatial-join against ``batiment_features`` (or fetch CAD_BATIMENT_HORSOL
+    directly if not provided) to get EGID per zone, then truncate/insert into
+    the local SQLite `reseau_thermique` table. Returns the number of records
+    inserted.
     """
 
     def _status(msg: str) -> None:
@@ -456,6 +469,7 @@ def refresh_reseau_thermique_db(
             progress_bar.progress(value)
 
     records = fetch_reseau_thermique(
+        batiment_features=batiment_features,
         progress_cb=lambda f: _progress(f * 0.9),
         status_cb=_status,
     )
@@ -897,7 +911,7 @@ class _StateStatus:
 
 
 def _do_full_refresh(addresses_url: str, state: dict) -> None:
-    """Run the three refreshes + timestamp write. Executes in a background thread.
+    """Run all cache refreshes + timestamp write. Executes in a background thread.
 
     Must not call any st.* UI functions (no ScriptRunContext here): progress is
     reported through the shared ``state`` dict, which the main script mirrors
@@ -905,11 +919,12 @@ def _do_full_refresh(addresses_url: str, state: dict) -> None:
     """
     bar = _StateBar(state)
     status = _StateStatus(state)
-    idc_bar = _split_progress(bar, 0.0, 1 / 5)
-    autor_bar = _split_progress(bar, 1 / 5, 1 / 5)
-    batiments_bar = _split_progress(bar, 2 / 5, 1 / 5)
-    reseau_thermique_bar = _split_progress(bar, 3 / 5, 1 / 5)
-    addr_bar = _split_progress(bar, 4 / 5, 1 / 5)
+    idc_bar = _split_progress(bar, 0.0, 1 / 6)
+    batiment_fetch_bar = _split_progress(bar, 1 / 6, 1 / 6)
+    autor_bar = _split_progress(bar, 2 / 6, 1 / 6)
+    batiments_bar = _split_progress(bar, 3 / 6, 1 / 6)
+    reseau_thermique_bar = _split_progress(bar, 4 / 6, 1 / 6)
+    addr_bar = _split_progress(bar, 5 / 6, 1 / 6)
 
     # Each stage is isolated: a failure in one (e.g. autorizations) must NOT skip
     # the timestamp write, otherwise last_full_refresh_utc stays unset and the gate
@@ -926,15 +941,44 @@ def _do_full_refresh(addresses_url: str, state: dict) -> None:
         logger.warning("IDC refresh failed: %s", exc)
         errors.append(f"idc: {exc}")
 
+    # Building footprints (CAD_BATIMENT_HORSOL, with geometry) — fetched once
+    # and shared by the three stages below instead of each downloading the
+    # ~240k-feature building layer separately. On failure, batiment_features
+    # stays None and each stage falls back to fetching it independently.
+    batiment_features: list[dict] | None = None
     try:
-        refresh_autorizations_db(progress_bar=autor_bar, status_text=status)
+
+        def _batiment_progress(v: float) -> None:
+            if batiment_fetch_bar is not None:
+                batiment_fetch_bar.progress(v)
+
+        def _batiment_status(msg: str) -> None:
+            status.caption(msg)
+            logger.info(msg)
+
+        batiment_features = fetch_batiment_footprints(
+            progress_cb=_batiment_progress, status_cb=_batiment_status
+        )
+    except Exception as exc:
+        logger.warning("Building footprints fetch failed: %s", exc)
+
+    try:
+        refresh_autorizations_db(
+            batiment_features=batiment_features,
+            progress_bar=autor_bar,
+            status_text=status,
+        )
         load_autorizations_by_egids.clear()
     except Exception as exc:
         logger.warning("Autorizations refresh failed: %s", exc)
         errors.append(f"autor: {exc}")
 
     try:
-        refresh_batiments_db(progress_bar=batiments_bar, status_text=status)
+        refresh_batiments_db(
+            batiment_features=batiment_features,
+            progress_bar=batiments_bar,
+            status_text=status,
+        )
         load_batiments_by_egids.clear()
     except Exception as exc:
         logger.warning("Batiments refresh failed: %s", exc)
@@ -942,7 +986,9 @@ def _do_full_refresh(addresses_url: str, state: dict) -> None:
 
     try:
         refresh_reseau_thermique_db(
-            progress_bar=reseau_thermique_bar, status_text=status
+            batiment_features=batiment_features,
+            progress_bar=reseau_thermique_bar,
+            status_text=status,
         )
         load_reseau_thermique_by_egids.clear()
     except Exception as exc:

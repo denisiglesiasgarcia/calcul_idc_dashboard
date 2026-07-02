@@ -96,28 +96,27 @@ def _parse_polygon(geo: dict | None) -> Polygon | MultiPolygon | None:
         return None
 
 
-def fetch_batiments(
+def fetch_batiment_footprints(
     url_batiment: str = URL_BATIMENT_HORSOL,
     progress_cb: Callable[[float], None] | None = None,
     status_cb: Callable[[str], None] | None = None,
 ) -> list[dict]:
     """
-    Fetch CAD_BATIMENT_HORSOL building characteristics keyed by EGID.
+    Fetch CAD_BATIMENT_HORSOL once, with full detail fields AND geometry.
 
-    Geometry is not requested: the dashboard reuses the IDC layer polygons for
-    mapping, so this layer only contributes descriptive attributes (construction
-    period, levels, height, footprint area, destination…). When several polygons
-    share an EGID, the one with the largest SURFACE is kept.
-
-    Returns a list of dicts with keys matching the `batiments` DB table.
+    This is the single, shared source for building characteristics
+    (fetch_batiments) and the two spatial joins (fetch_and_join_autorizations,
+    fetch_reseau_thermique) — passing its result into those functions avoids
+    downloading the ~240k-feature building layer three separate times per
+    refresh.
     """
     if status_cb:
-        status_cb("Chargement des caractéristiques des bâtiments SITG...")
+        status_cb("Chargement des bâtiments SITG (CAD_BATIMENT_HORSOL)...")
 
-    features = fetch_all(
+    return fetch_all(
         url_batiment,
         fields=_BATIMENT_DETAIL_FIELDS,
-        with_geometry=False,
+        with_geometry=True,
         max_workers=8,
         response_format="pbf",
         progress=False,
@@ -125,12 +124,40 @@ def fetch_batiments(
         status_cb=status_cb,
     )
 
-    if not features:
+
+def fetch_batiments(
+    batiment_features: list[dict] | None = None,
+    url_batiment: str = URL_BATIMENT_HORSOL,
+    progress_cb: Callable[[float], None] | None = None,
+    status_cb: Callable[[str], None] | None = None,
+) -> list[dict]:
+    """
+    Derive CAD_BATIMENT_HORSOL building characteristics keyed by EGID.
+
+    Geometry is ignored here: the dashboard reuses the IDC layer polygons for
+    mapping, so this layer only contributes descriptive attributes (construction
+    period, levels, height, footprint area, destination…). When several polygons
+    share an EGID, the one with the largest SURFACE is kept.
+
+    ``batiment_features`` may be a previously-fetched result of
+    fetch_batiment_footprints() to avoid a second network fetch; if omitted,
+    this fetches it directly (useful for standalone/test usage).
+
+    Returns a list of dicts with keys matching the `batiments` DB table.
+    """
+    if batiment_features is None:
+        batiment_features = fetch_batiment_footprints(
+            url_batiment, progress_cb=progress_cb, status_cb=status_cb
+        )
+    elif progress_cb:
+        progress_cb(1.0)
+
+    if not batiment_features:
         logger.warning("Aucun bâtiment retourné par le SITG")
         return []
 
     by_egid: dict[int, dict] = {}
-    for f in features:
+    for f in batiment_features:
         a = f["attributes"]
         egid = a.get("EGID")
         if egid is None:
@@ -164,20 +191,28 @@ def fetch_batiments(
 
 
 def fetch_and_join_autorizations(
+    batiment_features: list[dict] | None = None,
     url_autor: str = URL_AUTOR_DOSSIER,
     url_batiment: str = URL_BATIMENT_HORSOL,
     progress_cb: Callable[[float], None] | None = None,
     status_cb: Callable[[str], None] | None = None,
 ) -> list[dict]:
     """
-    Fetch all authorization dossiers and building footprints from SITG,
-    spatial-join them by location to assign EGID per dossier.
+    Fetch all authorization dossiers from SITG and spatial-join them against
+    building footprints by location to assign EGID per dossier.
+
+    ``batiment_features`` may be a previously-fetched result of
+    fetch_batiment_footprints() to avoid a second network fetch; if omitted,
+    this fetches it directly (useful for standalone/test usage).
 
     Returns a list of dicts with keys matching the `autorizations` DB table.
     Authorization points are buffered by 1m before the join to handle
     edge cases where a point sits exactly on a polygon boundary.
     """
-    # Stage 1: Authorization dossiers — points (0–40%)
+    fetch_span = 0.4 if batiment_features is None else 0.8
+
+    # Stage 1: Authorization dossiers — points (0–40%, or 0–80% when the
+    # building footprints are already provided)
     if status_cb:
         status_cb("Chargement des dossiers d'autorisation SITG...")
     autor_features = fetch_all(
@@ -187,7 +222,7 @@ def fetch_and_join_autorizations(
         max_workers=8,
         response_format="pbf",
         progress=False,
-        progress_cb=stage_progress(progress_cb, 0.0, 0.4),
+        progress_cb=stage_progress(progress_cb, 0.0, fetch_span),
         status_cb=status_cb,
     )
 
@@ -201,19 +236,22 @@ def fetch_and_join_autorizations(
         crs="EPSG:2056",
     ).dropna(subset=["geometry"])
 
-    # Stage 2: Building polygons (40–80%)
-    if status_cb:
-        status_cb("Chargement des emprises bâtiments SITG...")
-    batiment_features = fetch_all(
-        url_batiment,
-        fields=_BATIMENT_FIELDS,
-        with_geometry=True,
-        max_workers=8,
-        response_format="pbf",
-        progress=False,
-        progress_cb=stage_progress(progress_cb, 0.4, 0.8),
-        status_cb=status_cb,
-    )
+    # Stage 2: Building polygons — reuse if provided, else fetch (40–80%)
+    if batiment_features is None:
+        if status_cb:
+            status_cb("Chargement des emprises bâtiments SITG...")
+        batiment_features = fetch_all(
+            url_batiment,
+            fields=_BATIMENT_FIELDS,
+            with_geometry=True,
+            max_workers=8,
+            response_format="pbf",
+            progress=False,
+            progress_cb=stage_progress(progress_cb, 0.4, 0.8),
+            status_cb=status_cb,
+        )
+    elif progress_cb:
+        progress_cb(0.8)
 
     if not batiment_features:
         logger.warning("Aucun bâtiment retourné par le SITG")

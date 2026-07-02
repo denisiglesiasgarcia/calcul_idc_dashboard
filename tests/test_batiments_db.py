@@ -193,7 +193,10 @@ class TestFetchBatiments:
         # SITG ships the field misspelled as ANNEE_TRANSFORNATION.
         assert records[0]["annee_transformation"] == 2005
 
-    def test_requests_without_geometry(self, monkeypatch):
+    def test_fetches_with_geometry_when_no_features_provided(self, monkeypatch):
+        # fetch_batiments() fetches CAD_BATIMENT_HORSOL itself (with geometry,
+        # since the result is shared with the spatial-join callers) only when
+        # no pre-fetched batiment_features are passed in.
         captured = {}
 
         def _fake(url, **kwargs):
@@ -203,8 +206,28 @@ class TestFetchBatiments:
         monkeypatch.setattr(autor_api, "fetch_all", _fake)
         autor_api.fetch_batiments()
 
-        assert captured.get("with_geometry") is False
+        assert captured.get("with_geometry") is True
         assert captured.get("fields") == autor_api._BATIMENT_DETAIL_FIELDS
+
+    def test_uses_provided_features_without_fetching(self, monkeypatch):
+        def _fail(*args, **kwargs):
+            raise AssertionError(
+                "fetch_all should not be called when features are provided"
+            )
+
+        monkeypatch.setattr(autor_api, "fetch_all", _fail)
+
+        records = autor_api.fetch_batiments(
+            batiment_features=[
+                {
+                    "attributes": {"EGID": 1, "COMMUNE": "Genève", "SURFACE": 100},
+                    "geometry": {"rings": [[[0, 0], [1, 0], [1, 1], [0, 0]]]},
+                }
+            ]
+        )
+
+        assert len(records) == 1
+        assert records[0]["egid"] == 1
 
     def test_dedupes_keeping_largest_surface(self, monkeypatch):
         monkeypatch.setattr(
