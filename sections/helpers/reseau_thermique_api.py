@@ -12,7 +12,7 @@ import geopandas as gpd
 from shapely.geometry import MultiPolygon, Polygon
 from sitg_api import fetch_all, stage_progress
 
-from sections.helpers.autor_api import URL_BATIMENT_HORSOL
+from sections.helpers.autor_api import _FETCH_MAX_WORKERS, URL_BATIMENT_HORSOL
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ def fetch_reseau_thermique(
         url_rts,
         fields=_RTS_FIELDS,
         with_geometry=True,
-        max_workers=8,
+        max_workers=_FETCH_MAX_WORKERS,
         response_format="pbf",
         progress=False,
         progress_cb=stage_progress(progress_cb, 0.0, fetch_span),
@@ -96,7 +96,7 @@ def fetch_reseau_thermique(
             url_batiment,
             fields=_BATIMENT_FIELDS,
             with_geometry=True,
-            max_workers=8,
+            max_workers=_FETCH_MAX_WORKERS,
             response_format="pbf",
             progress=False,
             progress_cb=stage_progress(progress_cb, 0.4, 0.8),

@@ -1,6 +1,5 @@
 """Unit tests for idc_data SQLite cache: init, refresh, and load functions."""
 
-import json
 import sqlite3
 
 import polars as pl
@@ -47,9 +46,6 @@ def _make_feature(
             "annees_concernees_moy_3": None,
             "id_concessionnaire": None,
             "nbre_preneur": None,
-        },
-        "geometry": {
-            "rings": [[[2499000, 1117000], [2499100, 1117000], [2499000, 1117000]]]
         },
     }
 
@@ -123,23 +119,6 @@ class TestRefreshIdcDb:
 
         assert row == (42, 300)
 
-    def test_geometry_stored_as_json(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
-        db.init_idc_table()
-        monkeypatch.setattr(db, "fetch_all", lambda *a, **kw: [_make_feature(egid=1)])
-
-        db.refresh_idc_db("http://fake")
-
-        conn = sqlite3.connect(db.DB_PATH)
-        try:
-            row = conn.execute("SELECT geometry_json FROM idc_data").fetchone()
-        finally:
-            conn.close()
-
-        assert row is not None
-        geom = json.loads(row[0])
-        assert "rings" in geom
-
     def test_deduplicates_keeps_most_recent_saisie(self, tmp_path, monkeypatch):
         monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
         db.init_idc_table()
@@ -206,7 +185,12 @@ class TestRefreshIdcDb:
 
         assert count == 0
 
-    def test_calls_fetch_all_with_idc_fields_and_geometry(self, tmp_path, monkeypatch):
+    def test_calls_fetch_all_with_idc_fields_and_no_geometry(
+        self, tmp_path, monkeypatch
+    ):
+        # Geometry is deliberately not requested: the same polygon would
+        # otherwise be downloaded once per (egid, annee) row. The map instead
+        # sources building polygons from the batiments table.
         monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
         db.init_idc_table()
 
@@ -221,13 +205,12 @@ class TestRefreshIdcDb:
 
         # Explicit outFields (only the stored columns), not "*"
         assert captured.get("fields") == ",".join(db._IDC_COLS)
-        assert captured.get("with_geometry") is True
+        assert captured.get("with_geometry") is False
 
 
 class TestLoadIdcByEgids:
     def _insert_feature(self, path, feature: dict) -> None:
         a = feature["attributes"]
-        geom = feature.get("geometry")
         conn = sqlite3.connect(path)
         try:
             conn.execute(
@@ -239,8 +222,8 @@ class TestLoadIdcByEgids:
                     agent_energetique_3, quantite_agent_energetique_3, unite_agent_energetique_3,
                     date_debut_periode, date_fin_periode, date_saisie,
                     indice_moy2, annees_concernees_moy_2, indice_moy3, annees_concernees_moy_3,
-                    id_concessionnaire, nbre_preneur, geometry_json
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    id_concessionnaire, nbre_preneur
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     a["egid"],
@@ -269,68 +252,34 @@ class TestLoadIdcByEgids:
                     a["annees_concernees_moy_3"],
                     a["id_concessionnaire"],
                     a["nbre_preneur"],
-                    json.dumps(geom) if geom else None,
                 ),
             )
             conn.commit()
         finally:
             conn.close()
 
-    def test_returns_none_none_for_empty_tuple(self, tmp_path, monkeypatch):
+    def test_returns_none_for_empty_tuple(self, tmp_path, monkeypatch):
         monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
         db.init_idc_table()
 
-        geo, data = db.load_idc_by_egids(())
+        data = db.load_idc_by_egids(())
 
-        assert geo is None
         assert data is None
 
-    def test_returns_none_none_for_unknown_egid(self, tmp_path, monkeypatch):
+    def test_returns_none_for_unknown_egid(self, tmp_path, monkeypatch):
         monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
         db.init_idc_table()
 
-        geo, data = db.load_idc_by_egids((99999,))
+        data = db.load_idc_by_egids((99999,))
 
-        assert geo is None
         assert data is None
-
-    def test_returns_two_element_tuple(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
-        db.init_idc_table()
-        self._insert_feature(db.DB_PATH, _make_feature(egid=1))
-
-        result = db.load_idc_by_egids((1,))
-
-        assert len(result) == 2
-
-    def test_geometry_records_have_attributes_and_geometry_keys(
-        self, tmp_path, monkeypatch
-    ):
-        monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
-        db.init_idc_table()
-        self._insert_feature(db.DB_PATH, _make_feature(egid=1))
-
-        geo, _ = db.load_idc_by_egids((1,))
-
-        assert len(geo) == 1
-        assert "attributes" in geo[0]
-        assert "geometry" in geo[0]
-
-    def test_geometry_contains_rings(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
-        db.init_idc_table()
-        self._insert_feature(db.DB_PATH, _make_feature(egid=1))
-
-        geo, _ = db.load_idc_by_egids((1,))
-
-        assert "rings" in geo[0]["geometry"]
 
     def test_data_records_contain_all_idc_columns(self, tmp_path, monkeypatch):
         monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
         db.init_idc_table()
         self._insert_feature(db.DB_PATH, _make_feature(egid=1))
 
-        _, data = db.load_idc_by_egids((1,))
+        data = db.load_idc_by_egids((1,))
 
         row = data[0]
         for col in db._IDC_COLS:
@@ -341,7 +290,7 @@ class TestLoadIdcByEgids:
         db.init_idc_table()
         self._insert_feature(db.DB_PATH, _make_feature(egid=1))
 
-        _, data = db.load_idc_by_egids((1,))
+        data = db.load_idc_by_egids((1,))
 
         df = pl.from_dicts(data)
         assert isinstance(df["date_saisie"].dtype, pl.Datetime)
@@ -354,9 +303,8 @@ class TestLoadIdcByEgids:
         self._insert_feature(db.DB_PATH, _make_feature(egid=1))
         self._insert_feature(db.DB_PATH, _make_feature(egid=2))
 
-        geo, data = db.load_idc_by_egids((1, 2))
+        data = db.load_idc_by_egids((1, 2))
 
-        assert len(geo) == 2
         assert len(data) == 2
 
     def test_filters_by_egid(self, tmp_path, monkeypatch):
@@ -365,7 +313,7 @@ class TestLoadIdcByEgids:
         self._insert_feature(db.DB_PATH, _make_feature(egid=1))
         self._insert_feature(db.DB_PATH, _make_feature(egid=2))
 
-        _, data = db.load_idc_by_egids((1,))
+        data = db.load_idc_by_egids((1,))
 
         assert len(data) == 1
         assert data[0]["egid"] == 1
@@ -376,7 +324,7 @@ class TestLoadIdcByEgids:
         self._insert_feature(db.DB_PATH, _make_feature(egid=1, annee=2021))
         self._insert_feature(db.DB_PATH, _make_feature(egid=1, annee=2022))
 
-        _, data = db.load_idc_by_egids((1,))
+        data = db.load_idc_by_egids((1,))
 
         annees = sorted(r["annee"] for r in data)
         assert annees == [2021, 2022]
@@ -388,7 +336,7 @@ class TestLoadIdcByEgids:
         self._insert_feature(db.DB_PATH, _make_feature(egid=1, annee=2021))
         self._insert_feature(db.DB_PATH, _make_feature(egid=1, annee=2022))
 
-        _, data = db.load_idc_by_egids((1, 2))
+        data = db.load_idc_by_egids((1, 2))
 
         egids = [r["egid"] for r in data]
         assert egids == sorted(egids)

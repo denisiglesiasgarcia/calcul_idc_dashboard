@@ -30,7 +30,11 @@ from sections.helpers.user_data import (
     save_history_entry,
 )
 from sections.helpers.idc_charts import create_barplot
-from sections.helpers.idc_geo import convert_geometry_for_streamlit, show_map
+from sections.helpers.idc_geo import (
+    build_geometry_records_from_batiments,
+    convert_geometry_for_streamlit,
+    show_map,
+)
 from sections.helpers.idc_tables import (
     show_batiments_table,
     show_dataframe,
@@ -388,16 +392,11 @@ try:
             sorted(int(e) for e in egids if e and e not in ("N/A", "", None))
         )
 
-        data_geometry, data_df = load_idc_by_egids(egids_int)
+        data_df = load_idc_by_egids(egids_int)
 
         if not data_df:
             st.error("Impossible de charger les données IDC depuis la base locale.")
             st.stop()
-
-        geojson_data = None
-        centroid = None
-        if data_geometry and data_df:
-            geojson_data, centroid = convert_geometry_for_streamlit(data_geometry)
 
         st.divider()
 
@@ -405,10 +404,20 @@ try:
         # row and the detailed table below without a second DB round-trip.
         autor_records = load_autorizations_by_egids(egids_int) if egids_int else []
 
-        # Building characteristics (CAD_BATIMENT_HORSOL) — feeds the map tooltip
-        # and the dedicated "Caractéristiques des bâtiments" table below.
+        # Building characteristics (CAD_BATIMENT_HORSOL) — feeds the map polygons
+        # (one geometry per EGID, see build_geometry_records_from_batiments),
+        # the map tooltip, and the dedicated "Caractéristiques des bâtiments"
+        # table below.
         batiment_records = load_batiments_by_egids(egids_int) if egids_int else []
         batiments_by_egid = {r["egid"]: r for r in batiment_records}
+
+        geojson_data = None
+        centroid = None
+        geometry_records = build_geometry_records_from_batiments(
+            data_df, batiments_by_egid
+        )
+        if geometry_records:
+            geojson_data, centroid = convert_geometry_for_streamlit(geometry_records)
 
         # Structuring thermal network zones (GeniLac, GeniTerre…) — feeds the
         # dedicated "Réseau de chauffage à distance" table below.

@@ -1,15 +1,57 @@
 # /sections/helpers/idc_geo.py
 
+import json
 import logging
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+import polars as pl
 import pydeck as pdk
 import streamlit as st
 from pyproj import Transformer
 
 
 logging.basicConfig(level=logging.WARNING)
+
+
+# ---------------------------------------------------------------------------
+def build_geometry_records_from_batiments(
+    data_df: List[Dict], batiments_by_egid: Dict
+) -> List[Dict]:
+    """
+    Build the ``[{"attributes": ..., "geometry": ...}, ...]`` feature list
+    expected by convert_geometry_for_streamlit(), sourcing each building's
+    polygon from the batiments cache (one row per EGID) instead of from the
+    IDC layer — which no longer carries geometry (see db.refresh_idc_db).
+
+    One feature per EGID, using that building's most recent IDC year for the
+    map tooltip attributes. Buildings without a matching batiments geometry
+    are skipped (map falls back to "no geometry available" for those).
+    """
+    if not data_df:
+        return []
+
+    latest_by_egid = (
+        pl.DataFrame(data_df)
+        .sort(["egid", "annee"], descending=[False, True])
+        .unique(subset=["egid"], keep="first")
+        .to_dicts()
+    )
+
+    records = []
+    for row in latest_by_egid:
+        egid = row.get("egid")
+        bat = batiments_by_egid.get(egid) or batiments_by_egid.get(str(egid))
+        geom_json = bat.get("geometry_json") if bat else None
+        if not geom_json:
+            continue
+        try:
+            geom = json.loads(geom_json)
+        except (TypeError, ValueError):
+            continue
+        records.append({"attributes": row, "geometry": geom})
+
+    return records
 
 
 # ---------------------------------------------------------------------------

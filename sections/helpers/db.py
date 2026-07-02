@@ -1,10 +1,10 @@
 # /sections/helpers/db.py
 
-import json
 import logging
 import sqlite3
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -23,6 +23,14 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 DB_PATH = Path(__file__).parent.parent.parent / "idc_local.db"
+# Parallel HTTP requests per SITG fetch_all() call. Measured against the live
+# SCANE_INDICE_MOYENNES_3_ANS layer (81.7k rows / 41 pages): 8→16 workers cut
+# wall time ~31% (3.9s→2.7s); 16→24 gave no further gain (server-side plateau).
+_FETCH_MAX_WORKERS = 16
+# Rows per executemany()/commit() during bulk inserts. Larger batches mean
+# fewer SQLite commits for the same total row count (e.g. ~242k IDC rows:
+# 242 commits at 1000/chunk vs ~49 at 5000/chunk).
+_WRITE_CHUNK_SIZE = 5000
 _write_lock = threading.Lock()
 # The startup refresh runs in a single background daemon thread, decoupled from
 # the Streamlit script-run lifecycle. A Streamlit rerun (e.g. the cookie-manager's
@@ -126,6 +134,12 @@ def init_batiments_table() -> None:
                 surface              INTEGER
             )
         """)
+        # Migration: geometry_json was added after this table shipped.
+        # CREATE TABLE IF NOT EXISTS is a no-op on an already-existing table,
+        # so add the column explicitly for databases created before this change.
+        existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(batiments)")}
+        if "geometry_json" not in existing_cols:
+            conn.execute("ALTER TABLE batiments ADD COLUMN geometry_json TEXT")
         conn.commit()
     finally:
         conn.close()
@@ -197,8 +211,7 @@ def init_idc_table() -> None:
                 indice_moy3                     INTEGER,
                 annees_concernees_moy_3         TEXT,
                 id_concessionnaire              INTEGER,
-                nbre_preneur                    INTEGER,
-                geometry_json                   TEXT
+                nbre_preneur                    INTEGER
             )
         """)
         conn.execute("""
@@ -271,7 +284,7 @@ def refresh_autorizations_db(
             conn.execute("DELETE FROM autorizations")
             conn.commit()
 
-            chunk = 1000
+            chunk = _WRITE_CHUNK_SIZE
             total_chunks = (len(rows) + chunk - 1) // chunk
             for idx, i in enumerate(range(0, len(rows), chunk)):
                 conn.executemany(
@@ -355,6 +368,7 @@ _BATIMENT_COLS = [
     "niveaux_ssol",
     "hauteur",
     "surface",
+    "geometry_json",
 ]
 
 
@@ -400,7 +414,7 @@ def refresh_batiments_db(
             conn.execute("DELETE FROM batiments")
             conn.commit()
 
-            chunk = 1000
+            chunk = _WRITE_CHUNK_SIZE
             total_chunks = (len(rows) + chunk - 1) // chunk
             for idx, i in enumerate(range(0, len(rows), chunk)):
                 conn.executemany(
@@ -489,7 +503,7 @@ def refresh_reseau_thermique_db(
             conn.execute("DELETE FROM reseau_thermique")
             conn.commit()
 
-            chunk = 1000
+            chunk = _WRITE_CHUNK_SIZE
             total_chunks = (len(rows) + chunk - 1) // chunk
             for idx, i in enumerate(range(0, len(rows), chunk)):
                 # nosec B608 — _RESEAU_THERMIQUE_COLS is a fixed internal column
@@ -570,8 +584,15 @@ def refresh_idc_db(
     status_text=None,
 ) -> int:
     """
-    Fetch all IDC data from SITG SCANE_INDICE_MOYENNES_3_ANS (with geometry)
-    and rebuild the local idc_data table.
+    Fetch all IDC data from SITG SCANE_INDICE_MOYENNES_3_ANS and rebuild the
+    local idc_data table.
+
+    Geometry is not requested here: the same polygon would otherwise be
+    downloaded once per (egid, annee) row (~11x redundant — this layer has
+    ~11 years of history per building on average). The map instead sources
+    building polygons from the `batiments` table (see fetch_batiments()),
+    which stores one polygon per EGID.
+
     Returns the number of records inserted.
     """
 
@@ -590,10 +611,10 @@ def refresh_idc_db(
     features = fetch_all(
         url,
         # Request only the columns we store instead of "*": smaller payload,
-        # faster JSON parse. Geometry is controlled separately via with_geometry.
+        # faster JSON parse.
         fields=",".join(_IDC_COLS),
-        with_geometry=True,
-        max_workers=8,
+        with_geometry=False,
+        max_workers=_FETCH_MAX_WORKERS,
         response_format="pbf",
         progress=False,
         progress_cb=lambda f: _progress(f * 0.9),
@@ -607,55 +628,19 @@ def refresh_idc_db(
     _status(f"Dédoublonnage de {len(features):,} enregistrements IDC...")
 
     raw_attrs = [f["attributes"] for f in features]
-    geometries = [f.get("geometry") for f in features]
 
-    # Deduplicate: keep most recent date_saisie per (egid, annee), preserve original index.
+    # Deduplicate: keep most recent date_saisie per (egid, annee).
     # infer_schema_length=None scans all rows when inferring dtypes — required because
     # nullable columns (e.g. agent_energetique_2/3) can be null for the first 100+ rows
     # and only later carry a string, which would otherwise raise a schema/append error.
     df = (
         pl.from_dicts(raw_attrs, infer_schema_length=None)
         .select(_IDC_COLS)
-        .with_columns(pl.Series("_idx", range(len(raw_attrs))))
         .sort(["egid", "annee", "date_saisie"], descending=[False, False, True])
         .unique(subset=["egid", "annee"], keep="first")
     )
 
-    rows = []
-    for row in df.to_dicts():
-        orig_idx = row.pop("_idx")
-        geom = geometries[orig_idx]
-        rows.append(
-            (
-                row["egid"],
-                row["annee"],
-                row["indice"],
-                row["sre"],
-                row["adresse"],
-                row["npa"],
-                row["commune"],
-                row["destination"],
-                row["agent_energetique_1"],
-                row["quantite_agent_energetique_1"],
-                row["unite_agent_energetique_1"],
-                row["agent_energetique_2"],
-                row["quantite_agent_energetique_2"],
-                row["unite_agent_energetique_2"],
-                row["agent_energetique_3"],
-                row["quantite_agent_energetique_3"],
-                row["unite_agent_energetique_3"],
-                row["date_debut_periode"],
-                row["date_fin_periode"],
-                row["date_saisie"],
-                row["indice_moy2"],
-                row["annees_concernees_moy_2"],
-                row["indice_moy3"],
-                row["annees_concernees_moy_3"],
-                row["id_concessionnaire"],
-                row["nbre_preneur"],
-                json.dumps(geom) if geom else None,
-            )
-        )
+    rows = [tuple(row[c] for c in _IDC_COLS) for row in df.to_dicts()]
 
     _status(f"Écriture de {len(rows):,} enregistrements IDC en base...")
 
@@ -665,21 +650,13 @@ def refresh_idc_db(
             conn.execute("DELETE FROM idc_data")
             conn.commit()
 
-            chunk = 1000
+            chunk = _WRITE_CHUNK_SIZE
             total_chunks = (len(rows) + chunk - 1) // chunk
+            placeholders = ",".join(["?"] * len(_IDC_COLS))
             for idx, i in enumerate(range(0, len(rows), chunk)):
                 conn.executemany(
-                    """
-                    INSERT INTO idc_data (
-                        egid, annee, indice, sre, adresse, npa, commune, destination,
-                        agent_energetique_1, quantite_agent_energetique_1, unite_agent_energetique_1,
-                        agent_energetique_2, quantite_agent_energetique_2, unite_agent_energetique_2,
-                        agent_energetique_3, quantite_agent_energetique_3, unite_agent_energetique_3,
-                        date_debut_periode, date_fin_periode, date_saisie,
-                        indice_moy2, annees_concernees_moy_2, indice_moy3, annees_concernees_moy_3,
-                        id_concessionnaire, nbre_preneur, geometry_json
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                    """,
+                    f"INSERT INTO idc_data ({', '.join(_IDC_COLS)}) "  # nosec B608
+                    f"VALUES ({placeholders})",
                     rows[i : i + chunk],
                 )
                 conn.commit()
@@ -696,15 +673,16 @@ def refresh_idc_db(
 
 
 @st.cache_data(ttl=3600)
-def load_idc_by_egids(
-    egids: tuple[int, ...],
-) -> tuple[list[dict] | None, list[dict] | None]:
+def load_idc_by_egids(egids: tuple[int, ...]) -> list[dict] | None:
     """
-    Load IDC data and geometry from local SQLite for the given EGIDs.
-    Returns (geometry_records, data_records) matching the fetch_idc_data interface.
+    Load IDC data from local SQLite for the given EGIDs.
+
+    Geometry is not part of this table (see refresh_idc_db) — callers needing
+    a map should source building polygons from load_batiments_by_egids()
+    instead, keyed by EGID.
     """
     if not egids:
-        return None, None
+        return None
 
     conn = _get_conn()
     try:
@@ -712,7 +690,7 @@ def load_idc_by_egids(
         # egid values are bound as query parameters below; _IDC_COLS is a
         # fixed internal column list, not user input.
         cur = conn.execute(
-            f"SELECT {', '.join(_IDC_COLS)}, geometry_json "  # nosec B608
+            f"SELECT {', '.join(_IDC_COLS)} "  # nosec B608
             f"FROM idc_data WHERE egid IN ({placeholders}) ORDER BY egid, annee",
             list(egids),
         )
@@ -722,16 +700,9 @@ def load_idc_by_egids(
         conn.close()
 
     if not rows:
-        return None, None
+        return None
 
-    geometry_records = []
-    data_attrs = []
-    for r in rows:
-        d = dict(zip(col_names, r))
-        geom_json = d.pop("geometry_json", None)
-        geom = json.loads(geom_json) if geom_json else None
-        geometry_records.append({"attributes": dict(d), "geometry": geom})
-        data_attrs.append(d)
+    data_attrs = [dict(zip(col_names, r)) for r in rows]
 
     try:
         # infer_schema_length=None: same nullable-column inference guard as refresh_idc_db.
@@ -746,10 +717,10 @@ def load_idc_by_egids(
                 pl.col("quantite_agent_energetique_3").cast(pl.Float64),
             ]
         )
-        return geometry_records, df.to_dicts()
+        return df.to_dicts()
     except Exception as exc:
         logger.error("load_idc_by_egids: failed to build DataFrame: %s", exc)
-        return None, None
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -932,76 +903,113 @@ def _do_full_refresh(addresses_url: str, state: dict) -> None:
     # applies once a timestamp exists). A persistently-failing stage instead leaves
     # its table empty and is retried at the bounded cooldown cadence.
     errors: list[str] = []
+    errors_lock = threading.Lock()
 
-    # IDC first — the addresses table is derived from idc_data.
-    try:
-        refresh_idc_db(addresses_url, progress_bar=idc_bar, status_text=status)
-        load_idc_by_egids.clear()
-    except Exception as exc:
-        logger.warning("IDC refresh failed: %s", exc)
-        errors.append(f"idc: {exc}")
+    def _run_stage(label: str, fn) -> None:
+        try:
+            fn()
+        except Exception as exc:
+            logger.warning("%s refresh failed: %s", label, exc)
+            with errors_lock:
+                errors.append(f"{label}: {exc}")
 
-    # Building footprints (CAD_BATIMENT_HORSOL, with geometry) — fetched once
-    # and shared by the three stages below instead of each downloading the
-    # ~240k-feature building layer separately. On failure, batiment_features
-    # stays None and each stage falls back to fetching it independently.
-    batiment_features: list[dict] | None = None
-    try:
+    def _do_idc_then_addresses() -> None:
+        # Sequential within this thread: addresses are derived locally from
+        # idc_data, so they must run after IDC completes. Independent of
+        # every other stage below, so this whole chain runs concurrently
+        # with the building-footprint fetch and its dependents.
+        def _idc() -> None:
+            refresh_idc_db(addresses_url, progress_bar=idc_bar, status_text=status)
+            load_idc_by_egids.clear()
 
-        def _batiment_progress(v: float) -> None:
-            if batiment_fetch_bar is not None:
-                batiment_fetch_bar.progress(v)
+        _run_stage("idc", _idc)
 
-        def _batiment_status(msg: str) -> None:
-            status.caption(msg)
-            logger.info(msg)
+        def _addresses() -> None:
+            refresh_adresses_db(
+                addresses_url, progress_bar=addr_bar, status_text=status
+            )
+            get_all_addresses.clear()
+            get_address_lookup.clear()
 
-        batiment_features = fetch_batiment_footprints(
-            progress_cb=_batiment_progress, status_cb=_batiment_status
-        )
-    except Exception as exc:
-        logger.warning("Building footprints fetch failed: %s", exc)
+        _run_stage("adresses", _addresses)
 
-    try:
-        refresh_autorizations_db(
-            batiment_features=batiment_features,
-            progress_bar=autor_bar,
-            status_text=status,
-        )
-        load_autorizations_by_egids.clear()
-    except Exception as exc:
-        logger.warning("Autorizations refresh failed: %s", exc)
-        errors.append(f"autor: {exc}")
+    def _batiment_progress(v: float) -> None:
+        if batiment_fetch_bar is not None:
+            batiment_fetch_bar.progress(v)
 
-    try:
-        refresh_batiments_db(
-            batiment_features=batiment_features,
-            progress_bar=batiments_bar,
-            status_text=status,
-        )
-        load_batiments_by_egids.clear()
-    except Exception as exc:
-        logger.warning("Batiments refresh failed: %s", exc)
-        errors.append(f"batiments: {exc}")
+    def _batiment_status(msg: str) -> None:
+        status.caption(msg)
+        logger.info(msg)
 
-    try:
-        refresh_reseau_thermique_db(
-            batiment_features=batiment_features,
-            progress_bar=reseau_thermique_bar,
-            status_text=status,
-        )
-        load_reseau_thermique_by_egids.clear()
-    except Exception as exc:
-        logger.warning("Réseau thermique refresh failed: %s", exc)
-        errors.append(f"reseau_thermique: {exc}")
+    def _fetch_footprints() -> list[dict] | None:
+        # Building footprints (CAD_BATIMENT_HORSOL, with geometry) — fetched
+        # once and shared by the autorizations/batiments/reseau_thermique
+        # stages below instead of each downloading the ~83k-feature building
+        # layer separately. On failure, returns None and each stage falls
+        # back to fetching it independently.
+        try:
+            return fetch_batiment_footprints(
+                progress_cb=_batiment_progress, status_cb=_batiment_status
+            )
+        except Exception as exc:
+            logger.warning("Building footprints fetch failed: %s", exc)
+            return None
 
-    try:
-        refresh_adresses_db(addresses_url, progress_bar=addr_bar, status_text=status)
-        get_all_addresses.clear()
-        get_address_lookup.clear()
-    except Exception as exc:
-        logger.warning("Adresses refresh failed: %s", exc)
-        errors.append(f"adresses: {exc}")
+    # IDC(→addresses) and the building-footprint fetch don't depend on each
+    # other; autorizations/batiments/reseau_thermique only depend on the
+    # footprints fetch, not on each other or on IDC. Run everything that can
+    # overlap concurrently instead of one stage at a time.
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        footprints_future = executor.submit(_fetch_footprints)
+
+        def _run_autor() -> None:
+            batiment_features = footprints_future.result()
+
+            def _autor() -> None:
+                refresh_autorizations_db(
+                    batiment_features=batiment_features,
+                    progress_bar=autor_bar,
+                    status_text=status,
+                )
+                load_autorizations_by_egids.clear()
+
+            _run_stage("autor", _autor)
+
+        def _run_batiments() -> None:
+            batiment_features = footprints_future.result()
+
+            def _batiments() -> None:
+                refresh_batiments_db(
+                    batiment_features=batiment_features,
+                    progress_bar=batiments_bar,
+                    status_text=status,
+                )
+                load_batiments_by_egids.clear()
+
+            _run_stage("batiments", _batiments)
+
+        def _run_reseau_thermique() -> None:
+            batiment_features = footprints_future.result()
+
+            def _reseau_thermique() -> None:
+                refresh_reseau_thermique_db(
+                    batiment_features=batiment_features,
+                    progress_bar=reseau_thermique_bar,
+                    status_text=status,
+                )
+                load_reseau_thermique_by_egids.clear()
+
+            _run_stage("reseau_thermique", _reseau_thermique)
+
+        futures = [
+            executor.submit(_do_idc_then_addresses),
+            footprints_future,
+            executor.submit(_run_autor),
+            executor.submit(_run_batiments),
+            executor.submit(_run_reseau_thermique),
+        ]
+        for future in futures:
+            future.result()
 
     # Always record the attempt time, even on partial failure.
     try:

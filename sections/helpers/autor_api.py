@@ -4,6 +4,7 @@ building footprints from SITG ArcGIS REST APIs, then spatial-join them
 to produce records keyed by EGID, ready for Supabase insertion.
 """
 
+import json
 import logging
 from datetime import datetime, timezone
 from typing import Callable
@@ -13,6 +14,10 @@ from shapely.geometry import MultiPolygon, Point, Polygon
 from sitg_api import fetch_all, stage_progress
 
 logger = logging.getLogger(__name__)
+
+# Parallel HTTP requests per SITG fetch_all() call — see db.py's
+# _FETCH_MAX_WORKERS for the measurement behind this value.
+_FETCH_MAX_WORKERS = 16
 
 URL_AUTOR_DOSSIER = (
     "https://vector.sitg.ge.ch/arcgis/rest/services/"
@@ -42,8 +47,8 @@ _AUTOR_FIELDS = ",".join(
 
 _BATIMENT_FIELDS = "EGID,COMMUNE"
 
-# Descriptive building attributes surfaced in the dashboard (no geometry needed —
-# the map reuses the IDC layer polygons). NB: ANNEE_TRANSFORNATION is the SITG
+# Descriptive building attributes surfaced in the dashboard, fetched alongside
+# geometry by fetch_batiment_footprints(). NB: ANNEE_TRANSFORNATION is the SITG
 # field name, misspelled at source; we expose it as `annee_transformation`.
 _BATIMENT_DETAIL_FIELDS = ",".join(
     [
@@ -117,7 +122,7 @@ def fetch_batiment_footprints(
         url_batiment,
         fields=_BATIMENT_DETAIL_FIELDS,
         with_geometry=True,
-        max_workers=8,
+        max_workers=_FETCH_MAX_WORKERS,
         response_format="pbf",
         progress=False,
         progress_cb=progress_cb,
@@ -134,10 +139,12 @@ def fetch_batiments(
     """
     Derive CAD_BATIMENT_HORSOL building characteristics keyed by EGID.
 
-    Geometry is ignored here: the dashboard reuses the IDC layer polygons for
-    mapping, so this layer only contributes descriptive attributes (construction
-    period, levels, height, footprint area, destination…). When several polygons
-    share an EGID, the one with the largest SURFACE is kept.
+    Descriptive attributes (construction period, levels, height, footprint
+    area, destination…) plus a serialized geometry_json polygon — the
+    dashboard's map sources building polygons from here (one row per EGID)
+    rather than from the IDC layer, which would otherwise repeat the same
+    polygon once per (egid, annee) row. When several polygons share an EGID,
+    the one with the largest SURFACE is kept.
 
     ``batiment_features`` may be a previously-fetched result of
     fetch_batiment_footprints() to avoid a second network fetch; if omitted,
@@ -167,6 +174,7 @@ def fetch_batiments(
         # Keep the largest footprint when several polygons share an EGID.
         if existing is not None and (existing.get("surface") or 0) >= surface:
             continue
+        geometry = f.get("geometry")
         by_egid[egid] = {
             "egid": egid,
             "commune": a.get("COMMUNE"),
@@ -182,6 +190,9 @@ def fetch_batiments(
             "niveaux_ssol": a.get("NIVEAUX_SSOL"),
             "hauteur": a.get("HAUTEUR"),
             "surface": a.get("SURFACE"),
+            # Persisted once per EGID here instead of once per (egid, annee)
+            # IDC row — the map sources building polygons from this table.
+            "geometry_json": json.dumps(geometry) if geometry else None,
         }
 
     records = list(by_egid.values())
@@ -219,7 +230,7 @@ def fetch_and_join_autorizations(
         url_autor,
         fields=_AUTOR_FIELDS,
         with_geometry=True,
-        max_workers=8,
+        max_workers=_FETCH_MAX_WORKERS,
         response_format="pbf",
         progress=False,
         progress_cb=stage_progress(progress_cb, 0.0, fetch_span),
@@ -244,7 +255,7 @@ def fetch_and_join_autorizations(
             url_batiment,
             fields=_BATIMENT_FIELDS,
             with_geometry=True,
-            max_workers=8,
+            max_workers=_FETCH_MAX_WORKERS,
             response_format="pbf",
             progress=False,
             progress_cb=stage_progress(progress_cb, 0.4, 0.8),

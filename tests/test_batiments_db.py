@@ -23,6 +23,7 @@ def _make_batiment(egid: int = 100, surface: int = 250) -> dict:
         "niveaux_ssol": 1,
         "hauteur": 15.4,
         "surface": surface,
+        "geometry_json": '{"rings": [[[0, 0], [1, 0], [1, 1], [0, 0]]]}',
     }
 
 
@@ -52,6 +53,33 @@ class TestInitBatimentsTable:
         monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
         db.init_batiments_table()
         db.init_batiments_table()  # must not raise
+
+    def test_adds_geometry_json_to_pre_existing_table(self, tmp_path, monkeypatch):
+        # Regression test: a `batiments` table created before geometry_json
+        # existed must be migrated (CREATE TABLE IF NOT EXISTS is a no-op on
+        # an already-existing table, so this needs an explicit ALTER TABLE).
+        monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
+        conn = sqlite3.connect(db.DB_PATH)
+        try:
+            conn.execute("""
+                CREATE TABLE batiments (
+                    egid INTEGER PRIMARY KEY,
+                    commune TEXT,
+                    surface INTEGER
+                )
+            """)
+            conn.commit()
+        finally:
+            conn.close()
+
+        db.init_batiments_table()
+
+        conn = sqlite3.connect(db.DB_PATH)
+        try:
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(batiments)")}
+        finally:
+            conn.close()
+        assert "geometry_json" in cols
 
 
 class TestRefreshBatimentsDb:
@@ -228,6 +256,31 @@ class TestFetchBatiments:
 
         assert len(records) == 1
         assert records[0]["egid"] == 1
+
+    def test_serializes_geometry_as_json(self, monkeypatch):
+        import json
+
+        monkeypatch.setattr(autor_api, "fetch_all", lambda *a, **kw: [])
+
+        records = autor_api.fetch_batiments(
+            batiment_features=[
+                {
+                    "attributes": {"EGID": 1, "COMMUNE": "Genève", "SURFACE": 100},
+                    "geometry": {"rings": [[[0, 0], [1, 0], [1, 1], [0, 0]]]},
+                }
+            ]
+        )
+
+        assert "rings" in json.loads(records[0]["geometry_json"])
+
+    def test_geometry_json_none_when_no_geometry(self, monkeypatch):
+        monkeypatch.setattr(
+            autor_api, "fetch_all", lambda *a, **kw: [self._feature(1, 100)]
+        )
+
+        records = autor_api.fetch_batiments()
+
+        assert records[0]["geometry_json"] is None
 
     def test_dedupes_keeping_largest_surface(self, monkeypatch):
         monkeypatch.setattr(
