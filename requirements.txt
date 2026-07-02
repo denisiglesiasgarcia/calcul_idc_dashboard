@@ -304,13 +304,13 @@ cycler==0.12.1 \
     --hash=sha256:85cef7cff222d8644161529808465972e51340599459b8ac3ccbac5a854e0d30 \
     --hash=sha256:88bb128f02ba341da8ef447245a9e138fae777f6a23943da4540077d3601eb1c
     # via matplotlib
-dataframely==2.10.1 \
-    --hash=sha256:20fbff132de54934fce4444c55c3b86a5562103011d1622c06b8d6f9c7c67750 \
-    --hash=sha256:3240dcdcf00b9f69da23dd517de5967bcca9e2be1ea34da4e2c3a0a5688381cc \
-    --hash=sha256:436619c825c65ae56ca6702b1b544e6bdeae89e9d9876846c1bae5c5e56d619b \
-    --hash=sha256:4776d8738ef439a9fda3184338f61a608431c5a0b2fcbd2ac74cc2ecff1fdfe9 \
-    --hash=sha256:983c73d21654b8ce8f1ecfdbd4e5f5f35b3a44c0823a562c46558eb915261cce \
-    --hash=sha256:ab7f5ce91df543c9d7cd541e551fc78f0f0068c09c8c74cc707e5c35da992224
+dataframely==2.11.0 \
+    --hash=sha256:0de2ff87b01c46b0691d91a0fc40c2e134b4be1eabe447e8ecff47a56119d5a6 \
+    --hash=sha256:4036fcf7a7b5c68c62f755d9b4e183786df63ef23defb0ceae0079cf8c09203a \
+    --hash=sha256:7ca6ab8deee474e0a6bea18abd5c14d3afc5797dccbaf24f7292cda8da624942 \
+    --hash=sha256:91b368ce7b3d0408d9f181f7967e316eaff9e56fb13493a1e6de071ca1df342d \
+    --hash=sha256:9a7d15a4831a1a7715afeac1673ec9ce3d6cb6ef09070df9ec0f4ac54fc23ff9 \
+    --hash=sha256:aa62ca3dfcb4396d2045319db3d1fbaba96c7bdffcdc0f76bd47eca5a8a6e4e4
     # via sitg-api
 debugpy==1.8.21 \
     --hash=sha256:13678151fc401e2d68c9880b91e28714f797d40422994572b24560ef80910a88 \
@@ -1829,9 +1829,9 @@ truststore==0.10.4 \
     # via
     #   httpcore2
     #   httpx2
-typing-extensions==4.15.0 \
-    --hash=sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466 \
-    --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
+typing-extensions==4.16.0 \
+    --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8 \
+    --hash=sha256:dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5
     # via
     #   altair
     #   anyio

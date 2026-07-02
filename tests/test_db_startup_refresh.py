@@ -26,12 +26,13 @@ def _init_all_tables():
     db.init_adresses_table()
     db.init_autorizations_table()
     db.init_batiments_table()
+    db.init_reseau_thermique_table()
     db.init_idc_table()
     db.init_metadata_table()
 
 
 def _patch_refreshes(monkeypatch, calls):
-    """Patch all four refresh stages to count calls instead of hitting SITG."""
+    """Patch all five refresh stages to count calls instead of hitting SITG."""
     monkeypatch.setattr(
         db,
         "refresh_adresses_db",
@@ -46,6 +47,13 @@ def _patch_refreshes(monkeypatch, calls):
         db,
         "refresh_batiments_db",
         lambda **kw: calls.__setitem__("batiments", calls["batiments"] + 1) or 1,
+    )
+    monkeypatch.setattr(
+        db,
+        "refresh_reseau_thermique_db",
+        lambda **kw: (
+            calls.__setitem__("reseau_thermique", calls["reseau_thermique"] + 1) or 1
+        ),
     )
     monkeypatch.setattr(
         db,
@@ -71,13 +79,19 @@ class TestRefreshDbAtStartupIfNeeded:
         monkeypatch.setattr(db, "DB_PATH", tmp_path / "idc_test.db")
         _init_all_tables()
 
-        calls = {"addr": 0, "autor": 0, "batiments": 0, "idc": 0}
+        calls = {"addr": 0, "autor": 0, "batiments": 0, "idc": 0, "reseau_thermique": 0}
         _patch_refreshes(monkeypatch, calls)
 
         refreshed = db.refresh_db_at_startup_if_needed("http://fake")
 
         assert refreshed is True
-        assert calls == {"addr": 1, "autor": 1, "batiments": 1, "idc": 1}
+        assert calls == {
+            "addr": 1,
+            "autor": 1,
+            "batiments": 1,
+            "idc": 1,
+            "reseau_thermique": 1,
+        }
 
     def test_skips_refresh_when_recent_and_not_empty(self, tmp_path, monkeypatch):
         monkeypatch.setattr(db, "DB_PATH", tmp_path / "idc_test.db")
@@ -97,13 +111,19 @@ class TestRefreshDbAtStartupIfNeeded:
 
         _set_last_refresh(db.DB_PATH, datetime.now(timezone.utc))
 
-        calls = {"addr": 0, "autor": 0, "batiments": 0, "idc": 0}
+        calls = {"addr": 0, "autor": 0, "batiments": 0, "idc": 0, "reseau_thermique": 0}
         _patch_refreshes(monkeypatch, calls)
 
         refreshed = db.refresh_db_at_startup_if_needed("http://fake")
 
         assert refreshed is False
-        assert calls == {"addr": 0, "autor": 0, "batiments": 0, "idc": 0}
+        assert calls == {
+            "addr": 0,
+            "autor": 0,
+            "batiments": 0,
+            "idc": 0,
+            "reseau_thermique": 0,
+        }
 
     def test_refreshes_when_last_refresh_is_older_than_a_day(
         self, tmp_path, monkeypatch
@@ -125,13 +145,19 @@ class TestRefreshDbAtStartupIfNeeded:
 
         _set_last_refresh(db.DB_PATH, datetime.now(timezone.utc) - timedelta(days=2))
 
-        calls = {"addr": 0, "autor": 0, "batiments": 0, "idc": 0}
+        calls = {"addr": 0, "autor": 0, "batiments": 0, "idc": 0, "reseau_thermique": 0}
         _patch_refreshes(monkeypatch, calls)
 
         refreshed = db.refresh_db_at_startup_if_needed("http://fake")
 
         assert refreshed is True
-        assert calls == {"addr": 1, "autor": 1, "batiments": 1, "idc": 1}
+        assert calls == {
+            "addr": 1,
+            "autor": 1,
+            "batiments": 1,
+            "idc": 1,
+            "reseau_thermique": 1,
+        }
 
     def test_skips_refresh_when_empty_but_within_cooldown(self, tmp_path, monkeypatch):
         # Empty tables + a very recent refresh must NOT re-trigger on every rerun;
@@ -140,13 +166,19 @@ class TestRefreshDbAtStartupIfNeeded:
         _init_all_tables()
         _set_last_refresh(db.DB_PATH, datetime.now(timezone.utc))
 
-        calls = {"addr": 0, "autor": 0, "batiments": 0, "idc": 0}
+        calls = {"addr": 0, "autor": 0, "batiments": 0, "idc": 0, "reseau_thermique": 0}
         _patch_refreshes(monkeypatch, calls)
 
         refreshed = db.refresh_db_at_startup_if_needed("http://fake")
 
         assert refreshed is False
-        assert calls == {"addr": 0, "autor": 0, "batiments": 0, "idc": 0}
+        assert calls == {
+            "addr": 0,
+            "autor": 0,
+            "batiments": 0,
+            "idc": 0,
+            "reseau_thermique": 0,
+        }
 
     def test_refreshes_when_empty_and_cooldown_elapsed(self, tmp_path, monkeypatch):
         # Empty tables + last refresh older than the cooldown → retry once.
@@ -159,13 +191,19 @@ class TestRefreshDbAtStartupIfNeeded:
             - timedelta(minutes=1),
         )
 
-        calls = {"addr": 0, "autor": 0, "batiments": 0, "idc": 0}
+        calls = {"addr": 0, "autor": 0, "batiments": 0, "idc": 0, "reseau_thermique": 0}
         _patch_refreshes(monkeypatch, calls)
 
         refreshed = db.refresh_db_at_startup_if_needed("http://fake")
 
         assert refreshed is True
-        assert calls == {"addr": 1, "autor": 1, "batiments": 1, "idc": 1}
+        assert calls == {
+            "addr": 1,
+            "autor": 1,
+            "batiments": 1,
+            "idc": 1,
+            "reseau_thermique": 1,
+        }
 
     def test_skips_refresh_when_only_idc_empty_but_within_cooldown(
         self, tmp_path, monkeypatch
@@ -187,10 +225,16 @@ class TestRefreshDbAtStartupIfNeeded:
 
         _set_last_refresh(db.DB_PATH, datetime.now(timezone.utc))
 
-        calls = {"addr": 0, "autor": 0, "batiments": 0, "idc": 0}
+        calls = {"addr": 0, "autor": 0, "batiments": 0, "idc": 0, "reseau_thermique": 0}
         _patch_refreshes(monkeypatch, calls)
 
         refreshed = db.refresh_db_at_startup_if_needed("http://fake")
 
         assert refreshed is False
-        assert calls == {"addr": 0, "autor": 0, "batiments": 0, "idc": 0}
+        assert calls == {
+            "addr": 0,
+            "autor": 0,
+            "batiments": 0,
+            "idc": 0,
+            "reseau_thermique": 0,
+        }

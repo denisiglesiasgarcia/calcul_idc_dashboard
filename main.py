@@ -13,9 +13,11 @@ from sections.helpers.db import (
     init_autorizations_table,
     init_batiments_table,
     init_idc_table,
+    init_reseau_thermique_table,
     load_autorizations_by_egids,
     load_batiments_by_egids,
     load_idc_by_egids,
+    load_reseau_thermique_by_egids,
     refresh_db_at_startup_if_needed,
 )
 from sections.helpers.user_data import (
@@ -33,6 +35,7 @@ from sections.helpers.idc_tables import (
     show_batiments_table,
     show_dataframe,
     show_kpis,
+    show_reseau_thermique_table,
 )
 
 # Logs sitg_api (téléchargements SITG) : horodatage local + sink compatible tqdm.
@@ -75,6 +78,7 @@ init_cookie_manager()
 init_adresses_table()
 init_autorizations_table()
 init_batiments_table()
+init_reseau_thermique_table()
 init_idc_table()
 
 _startup_placeholder = st.empty()
@@ -406,6 +410,12 @@ try:
         batiment_records = load_batiments_by_egids(egids_int) if egids_int else []
         batiments_by_egid = {r["egid"]: r for r in batiment_records}
 
+        # Structuring thermal network zones (GeniLac, GeniTerre…) — feeds the
+        # dedicated "Réseau de chauffage à distance" table below.
+        reseau_thermique_records = (
+            load_reseau_thermique_by_egids(egids_int) if egids_int else []
+        )
+
         # IDC sections — year_range-dependent, isolated so slider errors don't
         # prevent the autorizations section below from rendering.
         try:
@@ -519,6 +529,11 @@ try:
         st.divider()
         st.subheader("Caractéristiques des bâtiments")
         show_batiments_table(batiment_records)
+
+        # Réseau de chauffage à distance / GeniLac — independent of year_range slider
+        st.divider()
+        st.subheader("Réseau de chauffage à distance")
+        show_reseau_thermique_table(reseau_thermique_records)
     else:
         st.warning(
             "Veuillez renseigner une ou plusieurs adresses pour afficher "

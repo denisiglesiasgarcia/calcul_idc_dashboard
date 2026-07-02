@@ -938,3 +938,64 @@ def show_batiments_table(batiment_records: list[dict]) -> None:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=False,
     )
+
+
+# Ordered (column, label) pairs for the thermal network zone table.
+_RESEAU_THERMIQUE_DISPLAY = [
+    ("egid", "EGID"),
+    ("fluide", "Type de réseau"),
+    ("horizon", "Horizon"),
+]
+
+# HORIZON values as returned by the SITG layer, sorted chronologically for display.
+_RESEAU_THERMIQUE_HORIZON_ORDER = {
+    "Existant": 0,
+    "Zone contraignante (2030)": 1,
+    "Zone intermediaire (2040)": 2,
+    "Zone cible (2050)": 3,
+}
+
+
+def show_reseau_thermique_table(reseau_thermique_records: list[dict]) -> None:
+    """
+    Affiche les zones de développement des réseaux thermiques structurants
+    (couche SITG OCEN_RTS_2030_2040_2050 — GeniLac, GeniTerre…) pour les EGID
+    sélectionnés : type de réseau (froid/chaud/chaud-froid) et horizon de
+    déploiement (2030/2040/2050) dans lesquels chaque bâtiment se trouve.
+    """
+    if not reseau_thermique_records:
+        st.info(
+            "Aucune zone de réseau thermique structurant (OCEN_RTS_2030_2040_2050) "
+            "trouvée pour ces bâtiments. Les données sont mises à jour "
+            "automatiquement au démarrage puis chaque jour."
+        )
+        return
+
+    df = pl.from_dicts(reseau_thermique_records)
+    cols = [c for c, _ in _RESEAU_THERMIQUE_DISPLAY if c in df.columns]
+    df_display = df.select(cols).sort(
+        "egid",
+        pl.col("horizon").replace_strict(_RESEAU_THERMIQUE_HORIZON_ORDER, default=99),
+    )
+
+    col_cfg = {
+        "egid": st.column_config.TextColumn("EGID"),
+        "fluide": st.column_config.TextColumn("Type de réseau"),
+        "horizon": st.column_config.TextColumn("Horizon"),
+    }
+
+    st.caption(f"{len(df_display):,} zone(s) — source SITG OCEN_RTS_2030_2040_2050.")
+    st.dataframe(
+        df_display.to_pandas(),
+        column_config=col_cfg,
+        width="stretch",
+        hide_index=True,
+    )
+
+    st.download_button(
+        label="📥 Télécharger reseau_thermique.xlsx",
+        data=convert_df_to_excel(df_display.to_pandas()),
+        file_name="reseau_thermique.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        width="content",
+    )

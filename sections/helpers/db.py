@@ -13,6 +13,7 @@ import streamlit as st
 from sitg_api import fetch_all
 
 from sections.helpers.autor_api import fetch_and_join_autorizations, fetch_batiments
+from sections.helpers.reseau_thermique_api import fetch_reseau_thermique
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -120,6 +121,27 @@ def init_batiments_table() -> None:
                 hauteur              REAL,
                 surface              INTEGER
             )
+        """)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def init_reseau_thermique_table() -> None:
+    conn = _get_conn()
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS reseau_thermique (
+                id      INTEGER PRIMARY KEY AUTOINCREMENT,
+                egid    INTEGER NOT NULL,
+                rts_id  INTEGER,
+                fluide  TEXT,
+                horizon TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_reseau_thermique_egid
+            ON reseau_thermique (egid)
         """)
         conn.commit()
     finally:
@@ -405,6 +427,93 @@ def load_batiments_by_egids(egids: tuple) -> list[dict]:
     finally:
         conn.close()
     return [dict(zip(_BATIMENT_COLS, r)) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Structuring thermal networks (OCEN_RTS_2030_2040_2050 — GeniLac, GeniTerre…) cache
+# ---------------------------------------------------------------------------
+
+_RESEAU_THERMIQUE_COLS = ["egid", "rts_id", "fluide", "horizon"]
+
+
+def refresh_reseau_thermique_db(
+    progress_bar=None,
+    status_text=None,
+) -> int:
+    """
+    Full ETL: fetch OCEN_RTS_2030_2040_2050 thermal network zones + CAD_BATIMENT_HORSOL
+    from SITG, spatial-join to get EGID per zone, then truncate/insert into the
+    local SQLite `reseau_thermique` table. Returns the number of records inserted.
+    """
+
+    def _status(msg: str) -> None:
+        if status_text is not None:
+            status_text.caption(msg)
+        logger.info(msg)
+
+    def _progress(value: float) -> None:
+        if progress_bar is not None:
+            progress_bar.progress(value)
+
+    records = fetch_reseau_thermique(
+        progress_cb=lambda f: _progress(f * 0.9),
+        status_cb=_status,
+    )
+
+    if not records:
+        _status("Aucune zone de réseau thermique récupérée.")
+        return 0
+
+    _status(f"Écriture de {len(records):,} zones réseau thermique en base...")
+
+    rows = [tuple(r[c] for c in _RESEAU_THERMIQUE_COLS) for r in records]
+    placeholders = ",".join(["?"] * len(_RESEAU_THERMIQUE_COLS))
+
+    conn = _get_conn()
+    try:
+        with _write_lock:
+            conn.execute("DELETE FROM reseau_thermique")
+            conn.commit()
+
+            chunk = 1000
+            total_chunks = (len(rows) + chunk - 1) // chunk
+            for idx, i in enumerate(range(0, len(rows), chunk)):
+                # nosec B608 — _RESEAU_THERMIQUE_COLS is a fixed internal column
+                # list, not user input; row values are bound as query parameters.
+                conn.executemany(
+                    f"INSERT INTO reseau_thermique "  # nosec B608
+                    f"({', '.join(_RESEAU_THERMIQUE_COLS)}) VALUES ({placeholders})",
+                    rows[i : i + chunk],
+                )
+                conn.commit()
+                _progress(0.9 + ((idx + 1) / total_chunks) * 0.1)
+    finally:
+        conn.close()
+
+    _progress(1.0)
+    _status(f"Terminé — {len(rows):,} zones réseau thermique enregistrées.")
+    return len(rows)
+
+
+@st.cache_data(ttl=600)
+def load_reseau_thermique_by_egids(egids: tuple) -> list[dict]:
+    """Load structuring thermal network zone matches for a set of EGIDs."""
+    if not egids:
+        return []
+    conn = _get_conn()
+    try:
+        placeholders = ",".join(["?"] * len(egids))
+        # egid values are bound as query parameters below; _RESEAU_THERMIQUE_COLS
+        # is a fixed internal column list, not user input.
+        cur = conn.execute(
+            f"SELECT {', '.join(_RESEAU_THERMIQUE_COLS)} FROM reseau_thermique "  # nosec B608
+            f"WHERE egid IN ({placeholders}) ORDER BY egid, horizon",
+            list(egids),
+        )
+        rows = cur.fetchall()
+    finally:
+        conn.close()
+    return [dict(zip(_RESEAU_THERMIQUE_COLS, r)) for r in rows]
 
 
 # ---------------------------------------------------------------------------
@@ -701,6 +810,9 @@ def _refresh_needed(refresh_interval: timedelta) -> bool:
         batiments_empty = (
             conn.execute("SELECT 1 FROM batiments LIMIT 1").fetchone() is None
         )
+        reseau_thermique_empty = (
+            conn.execute("SELECT 1 FROM reseau_thermique LIMIT 1").fetchone() is None
+        )
     finally:
         conn.close()
 
@@ -728,15 +840,23 @@ def _refresh_needed(refresh_interval: timedelta) -> bool:
     # A table is empty despite a recent attempt (e.g. a source layer returned no
     # rows, or a stage failed). Retry — but at most once per cooldown, NOT on every
     # rerun, otherwise adding an address would re-trigger the full download.
-    any_empty = addr_empty or autor_empty or idc_empty or batiments_empty
+    any_empty = (
+        addr_empty
+        or autor_empty
+        or idc_empty
+        or batiments_empty
+        or reseau_thermique_empty
+    )
     if any_empty and age >= _EMPTY_RETRY_COOLDOWN:
         logger.info(
             "Refresh needed: empty table past cooldown "
-            "(addr_empty=%s autor_empty=%s idc_empty=%s batiments_empty=%s age=%s).",
+            "(addr_empty=%s autor_empty=%s idc_empty=%s batiments_empty=%s "
+            "reseau_thermique_empty=%s age=%s).",
             addr_empty,
             autor_empty,
             idc_empty,
             batiments_empty,
+            reseau_thermique_empty,
             age,
         )
         return True
@@ -785,10 +905,11 @@ def _do_full_refresh(addresses_url: str, state: dict) -> None:
     """
     bar = _StateBar(state)
     status = _StateStatus(state)
-    idc_bar = _split_progress(bar, 0.0, 1 / 4)
-    autor_bar = _split_progress(bar, 1 / 4, 1 / 4)
-    batiments_bar = _split_progress(bar, 2 / 4, 1 / 4)
-    addr_bar = _split_progress(bar, 3 / 4, 1 / 4)
+    idc_bar = _split_progress(bar, 0.0, 1 / 5)
+    autor_bar = _split_progress(bar, 1 / 5, 1 / 5)
+    batiments_bar = _split_progress(bar, 2 / 5, 1 / 5)
+    reseau_thermique_bar = _split_progress(bar, 3 / 5, 1 / 5)
+    addr_bar = _split_progress(bar, 4 / 5, 1 / 5)
 
     # Each stage is isolated: a failure in one (e.g. autorizations) must NOT skip
     # the timestamp write, otherwise last_full_refresh_utc stays unset and the gate
@@ -818,6 +939,15 @@ def _do_full_refresh(addresses_url: str, state: dict) -> None:
     except Exception as exc:
         logger.warning("Batiments refresh failed: %s", exc)
         errors.append(f"batiments: {exc}")
+
+    try:
+        refresh_reseau_thermique_db(
+            progress_bar=reseau_thermique_bar, status_text=status
+        )
+        load_reseau_thermique_by_egids.clear()
+    except Exception as exc:
+        logger.warning("Réseau thermique refresh failed: %s", exc)
+        errors.append(f"reseau_thermique: {exc}")
 
     try:
         refresh_adresses_db(addresses_url, progress_bar=addr_bar, status_text=status)
