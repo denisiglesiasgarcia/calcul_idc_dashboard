@@ -99,7 +99,7 @@ def validate_data(data: pd.DataFrame | dict[str, Any]) -> pd.DataFrame:
         raise
     except Exception as e:
         raise ExcelExportError(
-            f"Data validation failed: {str(e)}", original_error=e
+            f"Data validation failed: {e!s}", original_error=e
         ) from e
 
 
@@ -166,7 +166,7 @@ def convert_df_to_excel(data: pd.DataFrame | dict[str, Any]) -> bytes:
         raise
     except Exception as e:
         raise ExcelExportError(
-            f"Excel conversion failed: {str(e)}", original_error=e
+            f"Excel conversion failed: {e!s}", original_error=e
         ) from e
     finally:
         if output:

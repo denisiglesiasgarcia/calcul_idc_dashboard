@@ -1,7 +1,7 @@
 # /sections/helpers/idc_tables.py
 
 import logging
-from typing import Optional, cast
+from typing import cast
 
 import pandas as pd
 import polars as pl
@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.WARNING)
 
 
 def show_dataframe(
-    data: list[dict], seuil: int = 450, year_range: Optional[tuple] = None
+    data: list[dict], seuil: int = 450, year_range: tuple | None = None
 ) -> None:
     df = pl.from_dicts(data)
 

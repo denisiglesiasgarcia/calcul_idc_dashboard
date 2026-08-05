@@ -9,7 +9,7 @@ import polars as pl
 import pytest
 from sitg_api import fetch_all
 
-from sections.helpers.idc_api import fetch_idc_data, RESULT_COLUMNS, validate_schema
+from sections.helpers.idc_api import RESULT_COLUMNS, fetch_idc_data, validate_schema
 
 URL_SITG = (
     "https://vector.sitg.ge.ch/arcgis/rest/services/Hosted/"

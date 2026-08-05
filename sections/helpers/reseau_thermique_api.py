@@ -6,7 +6,7 @@ network zone.
 """
 
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 import geopandas as gpd
 from shapely.geometry import MultiPolygon, Polygon

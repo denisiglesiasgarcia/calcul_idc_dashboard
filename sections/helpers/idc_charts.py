@@ -1,22 +1,21 @@
 # /sections/helpers/idc_charts.py
 
 import logging
-from typing import Dict, List, Optional, Tuple, cast
+from typing import cast
 
 import plotly.express as px
 import plotly.graph_objects as go
 import polars as pl
 import streamlit as st
 
-
 logging.basicConfig(level=logging.WARNING)
 
 
 def create_barplot(
-    data_df: List[Dict],
+    data_df: list[dict],
     nom_projet: str,
-    seuil: Optional[int] = 450,
-    year_range: Optional[Tuple[int, int]] = None,
+    seuil: int | None = 450,
+    year_range: tuple[int, int] | None = None,
 ) -> None:
     """
     Render a grouped bar chart of IDC by year and address.

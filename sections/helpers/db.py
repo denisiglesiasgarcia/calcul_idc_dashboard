@@ -5,7 +5,7 @@ import sqlite3
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import polars as pl
@@ -818,7 +818,7 @@ def _refresh_needed(refresh_interval: timedelta) -> bool:
         try:
             last_refresh = datetime.fromisoformat(row[0])
             if last_refresh.tzinfo is None:
-                last_refresh = last_refresh.replace(tzinfo=timezone.utc)
+                last_refresh = last_refresh.replace(tzinfo=UTC)
         except ValueError:
             logger.warning("Invalid last_full_refresh_utc value in app_metadata.")
 
@@ -827,7 +827,7 @@ def _refresh_needed(refresh_interval: timedelta) -> bool:
         logger.info("Refresh needed: no last_full_refresh_utc recorded.")
         return True
 
-    age = datetime.now(timezone.utc) - last_refresh
+    age = datetime.now(UTC) - last_refresh
 
     # Stale → run the regular daily refresh.
     if age >= refresh_interval:
@@ -1025,7 +1025,7 @@ def _do_full_refresh(addresses_url: str, state: dict) -> None:
 
     # Always record the attempt time, even on partial failure.
     try:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         conn = _get_conn()
         try:
             with _write_lock:

@@ -1,7 +1,7 @@
 # main.py
 
+from collections.abc import Callable
 from datetime import datetime
-from typing import Callable
 
 import polars as pl
 import sitg_api
@@ -20,15 +20,6 @@ from sections.helpers.db import (
     load_reseau_thermique_by_egids,
     refresh_db_at_startup_if_needed,
 )
-from sections.helpers.user_data import (
-    delete_favorite,
-    delete_history_entry,
-    init_cookie_manager,
-    load_favorites,
-    load_history,
-    save_favorite,
-    save_history_entry,
-)
 from sections.helpers.idc_charts import create_barplot
 from sections.helpers.idc_geo import (
     build_geometry_records_from_batiments,
@@ -40,6 +31,15 @@ from sections.helpers.idc_tables import (
     show_dataframe,
     show_kpis,
     show_reseau_thermique_table,
+)
+from sections.helpers.user_data import (
+    delete_favorite,
+    delete_history_entry,
+    init_cookie_manager,
+    load_favorites,
+    load_history,
+    save_favorite,
+    save_history_entry,
 )
 
 # Logs sitg_api (téléchargements SITG) : horodatage local + sink compatible tqdm.
