@@ -2,7 +2,6 @@
 
 import json
 import logging
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import polars as pl
@@ -10,14 +9,13 @@ import pydeck as pdk
 import streamlit as st
 from pyproj import Transformer
 
-
 logging.basicConfig(level=logging.WARNING)
 
 
 # ---------------------------------------------------------------------------
 def build_geometry_records_from_batiments(
-    data_df: List[Dict], batiments_by_egid: Dict
-) -> List[Dict]:
+    data_df: list[dict], batiments_by_egid: dict
+) -> list[dict]:
     """
     Build the ``[{"attributes": ..., "geometry": ...}, ...]`` feature list
     expected by convert_geometry_for_streamlit(), sourcing each building's
@@ -56,7 +54,7 @@ def build_geometry_records_from_batiments(
 
 # ---------------------------------------------------------------------------
 @st.cache_data
-def convert_geometry_for_streamlit(data: List[Dict]) -> Tuple:
+def convert_geometry_for_streamlit(data: list[dict]) -> tuple:
     """
     Convert polygon rings from LV95 (EPSG:2056) to WGS84 (EPSG:4326).
     Returns a GeoJSON FeatureCollection and the centroid [lon, lat].
@@ -92,9 +90,9 @@ def convert_geometry_for_streamlit(data: List[Dict]) -> Tuple:
 
 
 def show_map(
-    data: Dict,
-    centroid: Tuple[float, float],
-    batiments_by_egid: Optional[Dict] = None,
+    data: dict,
+    centroid: tuple[float, float],
+    batiments_by_egid: dict | None = None,
 ) -> None:
     """Render a PyDeck GeoJSON map centred on the selected buildings.
 
@@ -105,7 +103,7 @@ def show_map(
 
     # Couleur dynamique selon IDC : vert (bas) → rouge (élevé)
     # Si IDC absent, fallback sur rouge neutre
-    def _idc_to_color(feature: Dict) -> List[int]:
+    def _idc_to_color(feature: dict) -> list[int]:
         idc = feature.get("properties", {}).get("indice", None)
         if idc is None:
             return [200, 100, 100, 200]
@@ -117,7 +115,7 @@ def show_map(
 
     # Construit le bloc HTML des caractéristiques bâtiment (CAD_BATIMENT_HORSOL)
     # pour l'infobulle, ou une chaîne vide si l'EGID n'a pas de fiche bâtiment.
-    def _batiment_html(props: Dict) -> str:
+    def _batiment_html(props: dict) -> str:
         egid = props.get("egid")
         bat = batiments_by_egid.get(egid) or batiments_by_egid.get(str(egid))
         if not bat:
@@ -150,7 +148,7 @@ def show_map(
 
     # Construit les labels agent 2 / agent 3 pour l'infobulle, ou une chaîne
     # vide si l'agent correspondant est absent.
-    def _clean_agents(props: Dict) -> Dict:
+    def _clean_agents(props: dict) -> dict:
         cleaned = {}
         for i in (2, 3):
             agent = props.get(f"agent_energetique_{i}")

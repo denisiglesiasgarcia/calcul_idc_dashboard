@@ -1,7 +1,7 @@
 """Unit tests for automatic startup DB refresh scheduling."""
 
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sections.helpers import db
 
@@ -114,7 +114,7 @@ class TestRefreshDbAtStartupIfNeeded:
         finally:
             conn.close()
 
-        _set_last_refresh(db.DB_PATH, datetime.now(timezone.utc))
+        _set_last_refresh(db.DB_PATH, datetime.now(UTC))
 
         calls = {"addr": 0, "autor": 0, "batiments": 0, "idc": 0, "reseau_thermique": 0}
         _patch_refreshes(monkeypatch, calls)
@@ -148,7 +148,7 @@ class TestRefreshDbAtStartupIfNeeded:
         finally:
             conn.close()
 
-        _set_last_refresh(db.DB_PATH, datetime.now(timezone.utc) - timedelta(days=2))
+        _set_last_refresh(db.DB_PATH, datetime.now(UTC) - timedelta(days=2))
 
         calls = {"addr": 0, "autor": 0, "batiments": 0, "idc": 0, "reseau_thermique": 0}
         _patch_refreshes(monkeypatch, calls)
@@ -169,7 +169,7 @@ class TestRefreshDbAtStartupIfNeeded:
         # the empty-retry cooldown suppresses it.
         monkeypatch.setattr(db, "DB_PATH", tmp_path / "idc_test.db")
         _init_all_tables()
-        _set_last_refresh(db.DB_PATH, datetime.now(timezone.utc))
+        _set_last_refresh(db.DB_PATH, datetime.now(UTC))
 
         calls = {"addr": 0, "autor": 0, "batiments": 0, "idc": 0, "reseau_thermique": 0}
         _patch_refreshes(monkeypatch, calls)
@@ -191,9 +191,7 @@ class TestRefreshDbAtStartupIfNeeded:
         _init_all_tables()
         _set_last_refresh(
             db.DB_PATH,
-            datetime.now(timezone.utc)
-            - db._EMPTY_RETRY_COOLDOWN
-            - timedelta(minutes=1),
+            datetime.now(UTC) - db._EMPTY_RETRY_COOLDOWN - timedelta(minutes=1),
         )
 
         calls = {"addr": 0, "autor": 0, "batiments": 0, "idc": 0, "reseau_thermique": 0}
@@ -228,7 +226,7 @@ class TestRefreshDbAtStartupIfNeeded:
         finally:
             conn.close()
 
-        _set_last_refresh(db.DB_PATH, datetime.now(timezone.utc))
+        _set_last_refresh(db.DB_PATH, datetime.now(UTC))
 
         calls = {"addr": 0, "autor": 0, "batiments": 0, "idc": 0, "reseau_thermique": 0}
         _patch_refreshes(monkeypatch, calls)

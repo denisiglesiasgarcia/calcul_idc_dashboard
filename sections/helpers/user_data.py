@@ -14,7 +14,7 @@ before any read/write operation.
 """
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import streamlit as st
 from extra_streamlit_components import CookieManager
@@ -95,7 +95,7 @@ def save_history_entry(selected_options: list[str]) -> None:
     entries = _load(_COOKIE_HISTORY)
     if any(e.get("labels") == labels for e in entries):
         return
-    ts = datetime.now(timezone.utc).isoformat()
+    ts = datetime.now(UTC).isoformat()
     entries.insert(0, {"ts": ts, "labels": labels})
     _save(_COOKIE_HISTORY, entries[:_MAX_HISTORY])
 
